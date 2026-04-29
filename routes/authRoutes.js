@@ -41,7 +41,6 @@ router.get(
   }
 );
 
-export default router;
 
 router.post("/cli-login", (req, res) => {
   const { username } = req.body;
