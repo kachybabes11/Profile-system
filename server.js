@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-dotenv.config(); // ✅ MUST BE FIRST
+dotenv.config();
 
 import app from "./app.js";
 
