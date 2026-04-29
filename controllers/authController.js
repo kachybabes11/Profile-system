@@ -2,28 +2,38 @@ import {
   generateAccessToken,
   generateRefreshToken,
 } from "../utils/token.js";
+router.get(
+  "/github/callback",
+  passport.authenticate("github", {
+    failureRedirect: `${process.env.FRONTEND_URL}/login`
+  }),
+  (req, res) => {
 
-export const githubCallback = (req, res) => {
-  const user = req.user;
+    const user = req.user;
 
-  const accessToken = generateAccessToken(user);
-  const refreshToken = generateRefreshToken(user);
+    const role =
+      user.username === "kachybabes11" ? "admin" : "analyst";
 
-  // WEB (cookie-based auth)
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    secure: false,
-  });
+    const payload = {
+      username: user.username,
+      role
+    };
 
-  res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    secure: false,
-  });
+    const accessToken = generateAccessToken(payload);
+    const refreshToken = generateRefreshToken(payload);
 
-  // CLI / API response
-  res.json({
-    user,
-    accessToken,
-    refreshToken,
-  });
-};
+    // Store for WEB (cookie)
+    res.cookie("accessToken", accessToken, {
+      httpOnly: true,
+      sameSite: "lax"
+    });
+
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      sameSite: "lax"
+    });
+
+    // redirect to frontend
+    return res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
+  }
+);
