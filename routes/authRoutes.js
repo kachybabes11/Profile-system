@@ -1,6 +1,5 @@
 import express from "express";
-import passport from "../config/passport.js";
-import { githubCallback } from "../controllers/authController.js";
+import passport from "../config/passport.js"
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv"
 dotenv.config()
