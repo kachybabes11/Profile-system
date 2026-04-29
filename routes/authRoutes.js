@@ -67,7 +67,7 @@ router.get(
         sameSite: "lax"
       });
 
-      return res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
+      return res.redirect("http://localhost:4000/dashboard");
     } catch (err) {
       console.error("CALLBACK ERROR:", err);
 
