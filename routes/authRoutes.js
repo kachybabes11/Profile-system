@@ -12,11 +12,51 @@ router.get(
   passport.authenticate("github", { scope: ["user:email"] })
 );
 
+import express from "express";
+import passport from "../config/passport.js";
+import {
+  generateAccessToken,
+  generateRefreshToken
+} from "../utils/token.js";
+
+const router = express.Router();
+
+router.get(
+  "/github",
+  passport.authenticate("github", { scope: ["user:email"] })
+);
+
 router.get(
   "/github/callback",
   passport.authenticate("github", { session: false }),
-  githubCallback
+  (req, res) => {
+
+    const user = req.user;
+
+    const role =
+      user.username === "kachybabes11" ? "admin" : "analyst";
+
+    const payload = { username: user.username, role };
+
+    const accessToken = generateAccessToken(payload);
+    const refreshToken = generateRefreshToken(payload);
+
+    // WEB STORAGE
+    res.cookie("accessToken", accessToken, {
+      httpOnly: true,
+      sameSite: "lax"
+    });
+
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      sameSite: "lax"
+    });
+
+    return res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
+  }
 );
+
+export default router;
 
 router.post("/cli-login", (req, res) => {
   const { username } = req.body;
