@@ -13,34 +13,67 @@ router.get(
 
 router.get(
   "/github/callback",
-  passport.authenticate("github", { session: false }),
+  passport.authenticate("github", {
+    session: false,
+    failureRedirect: "/login"
+  }),
   (req, res) => {
+    try {
+      console.log("CALLBACK HIT");
 
-    const user = req.user;
+      if (!req.user) {
+        return res.status(401).json({
+          message: "GitHub login failed - no user returned"
+        });
+      }
 
-    const role =
-      user.username === "kachybabes11" ? "admin" : "analyst";
+      const user = req.user;
 
-    const payload = { username: user.username, role };
+      console.log("USER FROM GITHUB:", user);
 
-    const accessToken = generateAccessToken(payload);
-    const refreshToken = generateRefreshToken(payload);
+      const username = user.username || user.displayName;
 
-    // WEB STORAGE
-    res.cookie("accessToken", accessToken, {
-      httpOnly: true,
-      sameSite: "lax"
-    });
+      if (!username) {
+        return res.status(400).json({
+          message: "Invalid GitHub profile data"
+        });
+      }
 
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      sameSite: "lax"
-    });
+      const role =
+        username === "kachybabes11" ? "admin" : "analyst";
 
-    return res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
+      const payload = { username, role };
+
+      const accessToken = generateAccessToken(payload);
+      const refreshToken = generateRefreshToken(payload);
+
+      if (!process.env.FRONTEND_URL) {
+        return res.status(500).json({
+          message: "FRONTEND_URL not set in .env"
+        });
+      }
+
+      res.cookie("accessToken", accessToken, {
+        httpOnly: true,
+        sameSite: "lax"
+      });
+
+      res.cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        sameSite: "lax"
+      });
+
+      return res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
+    } catch (err) {
+      console.error("CALLBACK ERROR:", err);
+
+      return res.status(500).json({
+        message: "OAuth callback failed",
+        error: err.message
+      });
+    }
   }
 );
-
 
 router.post("/cli-login", (req, res) => {
   const { username } = req.body;
