@@ -34,11 +34,17 @@ router.get("/github/callback",
       expiresIn: "30m"
     });
 
-    res.cookie("accessToken", token, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "none"
-    });
+  res.cookie("accessToken", token, {
+  httpOnly: true,
+  secure: true,      
+  sameSite: "none"   
+});
+
+res.cookie("refreshToken", token, {
+  httpOnly: true,
+  secure: true,
+  sameSite: "none"
+});
 
     return res.redirect("http://localhost:4000/dashboard");
   }
