@@ -46,7 +46,7 @@ res.cookie("refreshToken", token, {
   sameSite: "none"
 });
 
-    return res.redirect("http://localhost:4000/dashboard");
+    return res.redirect(`${process.env.FRONTEND_URL}`);
   }
 );
 
