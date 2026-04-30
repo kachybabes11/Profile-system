@@ -57,10 +57,12 @@ router.get("/github/callback",
       });
     }
 
-    // WEB REDIRECT
-    return res.redirect(
-      "https://profile-intelligence-fe-production.up.railway.app/dashboard"
-    );
+    // WEB REDIRECT: handoff tokens to frontend callback so frontend domain can
+    // set its own httpOnly cookies and avoid cross-domain cookie login loops.
+    const frontendBaseUrl = process.env.FRONTEND_URL || "https://profile-intelligence-fe-production.up.railway.app";
+    const redirectUrl = `${frontendBaseUrl}/auth/callback?accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken)}`;
+
+    return res.redirect(redirectUrl);
   }
 );
 
