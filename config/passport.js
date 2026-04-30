@@ -9,6 +9,8 @@ passport.use(
       clientID: process.env.GITHUB_CLIENT_ID,
       clientSecret: process.env.GITHUB_CLIENT_SECRET,
       callbackURL: process.env.GITHUB_REDIRECT_URL,
+      pkce: true,
+      state: true,
     },
     (accessToken, refreshToken, profile, done) => {
       const username = profile.username;

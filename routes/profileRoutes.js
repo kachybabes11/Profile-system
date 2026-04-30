@@ -16,9 +16,9 @@ router.post("/profiles", authMiddleware, requireRole('admin'), createProfile);
 router.get("/profiles", authMiddleware, getProfiles);
 
 router.get("/profiles/export", authMiddleware, requireRole("admin"), exportProfiles)
-router.get("/profiles/search", searchProfiles);
+router.get("/profiles/search", authMiddleware, searchProfiles);
 
-router.get("/profiles/:id", getSingleProfile);
+router.get("/profiles/:id", authMiddleware, getSingleProfile);
 router.delete("/profiles/:id",authMiddleware,  requireRole("admin"), deleteProfile);
 
 
