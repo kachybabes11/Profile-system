@@ -124,7 +124,7 @@ Get current user role
  MANUAL BACKEND TESTING (POSTMAN / CURL)
 This section explains how to test the backend manually using Postman or terminal.
 
-🔐 1. OAuth Login Test
+🔐 1.  Login Test
 Endpoint:
 GET /auth/cli-login
 
