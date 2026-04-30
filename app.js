@@ -1,7 +1,7 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import passport from "./config/passport.js";
-
+import session from "express-session";
 import authRoutes from "./routes/authRoutes.js";
 import insightRoutes from "./routes/insightRoutes.js"
 import profileRoutes from "./routes/profileRoutes.js";
