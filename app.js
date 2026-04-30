@@ -18,7 +18,7 @@ app.use(logger);
 app.use(rateLimiter);
 
 app.use(cors({
-  origin: "http://localhost:4000",
+  origin: "https://profile-intelligence-fe-production.up.railway.app",
   credentials: true
 }));
 

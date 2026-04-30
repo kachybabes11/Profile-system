@@ -17,8 +17,7 @@ router.get(
 
 router.get("/github/callback",
   passport.authenticate("github", {
-    session: false,
-    failureRedirect: "/login"
+    session: false
   }),
   (req, res) => {
 
@@ -30,23 +29,38 @@ router.get("/github/callback",
       role: user.username === "kachybabes11" ? "admin" : "analyst"
     };
 
-    const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: "30m"
+    const accessToken = generateAccessToken(payload);
+    const refreshToken = generateRefreshToken(payload);
+
+    // 🟢 1. FOR WEB (COOKIE)
+    res.cookie("accessToken", accessToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      path: "/"
     });
 
-  res.cookie("accessToken", token, {
-  httpOnly: true,
-  secure: true,      
-  sameSite: "none"   
-});
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      path: "/"
+    });
 
-res.cookie("refreshToken", token, {
-  httpOnly: true,
-  secure: true,
-  sameSite: "none"
-});
+    // 🟡 2. FOR CLI (TOKEN RETURN OPTION)
+    const isCLI = req.query.source === "cli";
 
-    return res.redirect(`${process.env.FRONTEND_URL}`);
+    if (isCLI) {
+      return res.json({
+        accessToken,
+        refreshToken
+      });
+    }
+
+    // WEB REDIRECT
+    return res.redirect(
+      "https://profile-intelligence-fe-production.up.railway.app/dashboard"
+    );
   }
 );
 
