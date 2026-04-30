@@ -13,7 +13,7 @@ import { authMiddleware } from "../middleware/authMiddleware.js";
 const router = express.Router();
 
 router.post("/profiles", authMiddleware, requireRole('admin'), createProfile);
-router.get("/profiles", authMiddleware, requireRole("admin"), getProfiles);
+router.get("/profiles", authMiddleware, getProfiles);
 
 router.get("/profiles/export", authMiddleware, requireRole("admin"), exportProfiles)
 router.get("/profiles/search", searchProfiles);

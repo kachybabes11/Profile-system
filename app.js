@@ -16,10 +16,18 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(logger);
 app.use(rateLimiter);
+
 app.use(cors({
   origin: "http://localhost:4000",
   credentials: true
 }));
+
+app.use(session({
+  secret: "secret",
+  resave: false,
+  saveUninitialized: false
+}));
+
 app.use(passport.initialize());
 
 app.use("/auth", authRoutes);

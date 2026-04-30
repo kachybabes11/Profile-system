@@ -15,46 +15,32 @@ router.get(
   passport.authenticate("github", { scope: ["user:email"] })
 );
 
-router.get(
-  "/github/callback",
+router.get("/github/callback",
   passport.authenticate("github", {
     session: false,
     failureRedirect: "/login"
   }),
   (req, res) => {
-    try {
-      const user = req.user;
 
-      const username = user.username || user.displayName;
+    const user = req.user;
 
-      const role =
-        username === "kachybabes11" ? "admin" : "analyst";
+    const payload = {
+      id: user.id,
+      username: user.username || user.displayName,
+      role: user.username === "kachybabes11" ? "admin" : "analyst"
+    };
 
-      const payload = { username, role };
+    const token = jwt.sign(payload, process.env.JWT_SECRET, {
+      expiresIn: "30m"
+    });
 
-      const accessToken = generateAccessToken(payload);
-      const refreshToken = generateRefreshToken(payload);
+    res.cookie("accessToken", token, {
+      httpOnly: true,
+      secure: false,
+      sameSite: "none"
+    });
 
-      // 🔥 VERY IMPORTANT COOKIE SETTINGS
-      res.cookie("accessToken", accessToken, {
-        httpOnly: true,
-        secure: false, // true if HTTPS
-        sameSite: "lax"
-      });
-
-      res.cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: false,
-        sameSite: "lax"
-      });
-
-      // redirect to frontend
-      return res.redirect("http://localhost:4000/dashboard");
-
-    } catch (err) {
-      console.error(err);
-      return res.status(500).json({ message: "OAuth failed" });
-    }
+    return res.redirect("http://localhost:4000/dashboard");
   }
 );
 

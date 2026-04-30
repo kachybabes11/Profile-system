@@ -1,4 +1,4 @@
-import {
+/*import {
   generateAccessToken,
   generateRefreshToken,
 } from "../utils/token.js";
@@ -38,4 +38,4 @@ router.get(
     // redirect to frontend
     return res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
   }
-);
+); */
