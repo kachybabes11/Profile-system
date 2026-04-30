@@ -8,6 +8,7 @@ import profileRoutes from "./routes/profileRoutes.js";
 
 import { rateLimiter } from "./middleware/rateLimiter.js";
 import { logger } from "./middleware/logger.js";
+import cors from "cors";
 
 const app = express();
 
@@ -15,7 +16,10 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(logger);
 app.use(rateLimiter);
-
+app.use(cors({
+  origin: "http://localhost:4000",
+  credentials: true
+}));
 app.use(passport.initialize());
 
 app.use("/auth", authRoutes);

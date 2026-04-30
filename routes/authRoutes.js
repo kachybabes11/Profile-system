@@ -23,25 +23,9 @@ router.get(
   }),
   (req, res) => {
     try {
-      console.log("CALLBACK HIT");
-
-      if (!req.user) {
-        return res.status(401).json({
-          message: "GitHub login failed - no user returned"
-        });
-      }
-
       const user = req.user;
 
-      console.log("USER FROM GITHUB:", user);
-
       const username = user.username || user.displayName;
-
-      if (!username) {
-        return res.status(400).json({
-          message: "Invalid GitHub profile data"
-        });
-      }
 
       const role =
         username === "kachybabes11" ? "admin" : "analyst";
@@ -51,30 +35,25 @@ router.get(
       const accessToken = generateAccessToken(payload);
       const refreshToken = generateRefreshToken(payload);
 
-      if (!process.env.FRONTEND_URL) {
-        return res.status(500).json({
-          message: "FRONTEND_URL not set in .env"
-        });
-      }
-
+      // 🔥 VERY IMPORTANT COOKIE SETTINGS
       res.cookie("accessToken", accessToken, {
         httpOnly: true,
+        secure: false, // true if HTTPS
         sameSite: "lax"
       });
 
       res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
+        secure: false,
         sameSite: "lax"
       });
 
+      // redirect to frontend
       return res.redirect("http://localhost:4000/dashboard");
-    } catch (err) {
-      console.error("CALLBACK ERROR:", err);
 
-      return res.status(500).json({
-        message: "OAuth callback failed",
-        error: err.message
-      });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ message: "OAuth failed" });
     }
   }
 );
