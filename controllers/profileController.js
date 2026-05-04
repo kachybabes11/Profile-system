@@ -10,7 +10,7 @@ import {
 import { fetchExternalData } from "../services/externalApiService.js";
 import { getAgeGroup, pickBestCountry } from "../utils/helpers.js";
 import { parseQuery } from "../utils/queryParser.js";
-import pool from "../config/db.js";
+import { exportProfilesAsCSV } from "../services/exportService.js";
 
 
 // GET ALL PROFILES 
@@ -18,12 +18,22 @@ export async function getProfiles(req, res) {
   try {
     const result = await getAll(req.query);
 
+    const totalPages = Math.ceil(result.total / result.limit);
+    const nextPage = result.page < totalPages ? result.page + 1 : null;
+    const prevPage = result.page > 1 ? result.page - 1 : null;
+
     res.json({
       status: "success",
       page: result.page,
       limit: result.limit,
       total: result.total,
+      total_pages: totalPages,
       data: result.data,
+      links: {
+        self: `/api/profiles?page=${result.page}&limit=${result.limit}`,
+        next: nextPage ? `/api/profiles?page=${nextPage}&limit=${result.limit}` : null,
+        prev: prevPage ? `/api/profiles?page=${prevPage}&limit=${result.limit}` : null,
+      },
     });
   } catch (err) {
     res.status(400).json({
@@ -54,12 +64,22 @@ export async function searchProfiles(req, res) {
       ...req.query,
     });
 
+    const totalPages = Math.ceil(result.total / result.limit);
+    const nextPage = result.page < totalPages ? result.page + 1 : null;
+    const prevPage = result.page > 1 ? result.page - 1 : null;
+
     res.json({
       status: "success",
       page: result.page,
       limit: result.limit,
       total: result.total,
+      total_pages: totalPages,
       data: result.data,
+      links: {
+        self: `/api/profiles/search?q=${encodeURIComponent(req.query.q)}&page=${result.page}&limit=${result.limit}`,
+        next: nextPage ? `/api/profiles/search?q=${encodeURIComponent(req.query.q)}&page=${nextPage}&limit=${result.limit}` : null,
+        prev: prevPage ? `/api/profiles/search?q=${encodeURIComponent(req.query.q)}&page=${prevPage}&limit=${result.limit}` : null,
+      },
     });
 
   } catch (err) {
@@ -136,6 +156,7 @@ export async function createProfile(req, res) {
       country_name: bestCountry.country_name,
       country_probability: bestCountry.probability,
       created_at: new Date().toISOString(),
+      created_by: req.user.userId,
     };
 
     await create(profile);
@@ -229,40 +250,7 @@ export async function deleteProfile(req, res) {
 
 export async function exportProfiles(req, res) {
   try {
-    const result = await pool.query("SELECT * FROM profiles");
-
-    const profiles = result.rows;
-
-    if (!profiles.length) {
-      return res.status(404).json({
-        status: "error",
-        message: "No profiles found"
-      });
-    }
-
-    // CSV HEADER
-    const header = [
-      "id",
-      "name",
-      "gender",
-      "age",
-      "country"
-    ].join(",");
-
-    // CSV ROWS
-    const rows = profiles
-      .map(p =>
-        [
-          p.id,
-          p.name,
-          p.gender,
-          p.age,
-          p.country_name
-        ].join(",")
-      )
-      .join("\n");
-
-    const csv = `${header}\n${rows}`;
+    const csv = await exportProfilesAsCSV(req.query);
 
     // detect client type (CLI / Postman / Browser)
     const wantsJSON =
@@ -289,6 +277,57 @@ export async function exportProfiles(req, res) {
     return res.status(500).json({
       status: "error",
       message: "Failed to export profiles"
+    });
+  }
+}
+
+/**
+ * UPLOAD PROFILES FROM CSV
+ * Streams CSV file, validates rows, batch inserts to database
+ * Non-blocking, handles up to 500k rows
+ */
+export async function uploadProfilesCSV(req, res) {
+  try {
+    // Check if file is provided
+    if (!req.file) {
+      return res.status(400).json({
+        status: "error",
+        message: "CSV file is required. Send as multipart/form-data with field 'file'",
+      });
+    }
+
+    // Check file type
+    if (req.file.mimetype !== "text/csv" && !req.file.originalname.endsWith(".csv")) {
+      return res.status(400).json({
+        status: "error",
+        message: "File must be CSV format",
+      });
+    }
+
+    // Create readable stream from buffer
+    const fileStream = Readable.from([req.file.buffer]);
+
+    // Process CSV stream (handles validation, batching, and insertion)
+    const stats = await processCSVStream(fileStream);
+
+    // Invalidate query cache after bulk insert
+    invalidateQueryCache();
+
+    return res.status(201).json({
+      status: "success",
+      total_rows: stats.total_rows,
+      inserted: stats.inserted,
+      skipped: stats.skipped,
+      reasons: stats.reasons,
+    });
+
+  } catch (err) {
+    console.error("CSV UPLOAD ERROR:", err);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to process CSV upload",
+      details: err.message,
     });
   }
 }

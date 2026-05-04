@@ -1,6 +1,24 @@
 import pool from "../config/db.js";
+import { generateCacheKey, getCache, setCache, normalizeFilters, invalidateQueryCache } from "../services/cacheService.js";
+
+// Select only needed columns (not *)
+const PROFILE_COLUMNS = [
+  "id",
+  "name",
+  "gender",
+  "gender_probability",
+  "age",
+  "age_group",
+  "country_id",
+  "country_name",
+  "country_probability",
+  "created_at",
+];
 
 export async function getAll(filters) {
+  // Normalize filters for consistent caching
+  const normalized = normalizeFilters(filters);
+
   let {
     gender,
     age_group,
@@ -13,16 +31,25 @@ export async function getAll(filters) {
     order = "asc",
     page = 1,
     limit = 10,
-    raw, // 🔥 ADD THIS (from search query)
-  } = filters;
+    raw,
+  } = normalized;
 
   page = parseInt(page);
   limit = Math.min(parseInt(limit), 50);
 
-  const values = [];
-  let query = "SELECT * FROM profiles WHERE 1=1";
+  // Generate cache key from normalized filters
+  const cacheKey = generateCacheKey(normalized);
 
-  // 🔥 NAME SEARCH (IMPORTANT FIX)
+  // Check cache first
+  const cached = getCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const values = [];
+  let query = `SELECT ${PROFILE_COLUMNS.join(", ")} FROM profiles WHERE 1=1`;
+
+  // NAME SEARCH
   if (raw) {
     values.push(`%${raw}%`);
     query += ` AND name ILIKE $${values.length}`;
@@ -86,19 +113,72 @@ export async function getAll(filters) {
 
   const data = await pool.query(query, values);
 
-  const totalRes = await pool.query("SELECT COUNT(*) FROM profiles");
+  // Get total count (with same filters, not all records)
+  let countQuery = "SELECT COUNT(*) FROM profiles WHERE 1=1";
+  const countValues = [];
+  let countParamIndex = 0;
 
-  return {
+  if (raw) {
+    countValues.push(`%${raw}%`);
+    countQuery += ` AND name ILIKE $${++countParamIndex}`;
+  }
+
+  if (gender) {
+    countValues.push(gender);
+    countQuery += ` AND gender = $${++countParamIndex}`;
+  }
+
+  if (age_group) {
+    countValues.push(age_group);
+    countQuery += ` AND age_group = $${++countParamIndex}`;
+  }
+
+  if (Array.isArray(country_id)) {
+    countValues.push(country_id);
+    countQuery += ` AND country_id = ANY($${++countParamIndex})`;
+  } else if (country_id) {
+    countValues.push(country_id);
+    countQuery += ` AND country_id = $${++countParamIndex}`;
+  }
+
+  if (min_age) {
+    countValues.push(min_age);
+    countQuery += ` AND age >= $${++countParamIndex}`;
+  }
+
+  if (max_age) {
+    countValues.push(max_age);
+    countQuery += ` AND age <= $${++countParamIndex}`;
+  }
+
+  if (min_gender_probability) {
+    countValues.push(min_gender_probability);
+    countQuery += ` AND gender_probability >= $${++countParamIndex}`;
+  }
+
+  if (min_country_probability) {
+    countValues.push(min_country_probability);
+    countQuery += ` AND country_probability >= $${++countParamIndex}`;
+  }
+
+  const totalRes = await pool.query(countQuery, countValues);
+
+  const result = {
     data: data.rows,
     total: parseInt(totalRes.rows[0].count),
     page,
     limit,
   };
+
+  // Cache result (5 minutes)
+  setCache(cacheKey, result, 300);
+
+  return result;
 }
 
 export async function findByName(name) {
   const res = await pool.query(
-    "SELECT * FROM profiles WHERE name=$1",
+    `SELECT ${PROFILE_COLUMNS.join(", ")} FROM profiles WHERE name=$1`,
     [name]
   );
   return res.rows[0];
@@ -106,7 +186,7 @@ export async function findByName(name) {
 
 export async function findById(id) {
   const res = await pool.query(
-    "SELECT * FROM profiles WHERE id=$1",
+    `SELECT ${PROFILE_COLUMNS.join(", ")} FROM profiles WHERE id=$1`,
     [id]
   );
   return res.rows[0];
@@ -115,8 +195,8 @@ export async function findById(id) {
 export async function create(profile) {
   await pool.query(
     `INSERT INTO profiles 
-    (id, name, gender, gender_probability, age, age_group, country_id, country_name, country_probability, created_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    (id, name, gender, gender_probability, age, age_group, country_id, country_name, country_probability, created_at, created_by)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
     [
       profile.id,
       profile.name,
@@ -128,8 +208,12 @@ export async function create(profile) {
       profile.country_name,
       profile.country_probability,
       profile.created_at,
+      profile.created_by,
     ]
   );
+
+  // Invalidate query cache when new profile is created
+  invalidateQueryCache();
 }
 
 export async function deleteById(id) {
@@ -137,5 +221,11 @@ export async function deleteById(id) {
     "DELETE FROM profiles WHERE id=$1",
     [id]
   );
+
+  // Invalidate query cache when profile is deleted
+  if (res.rowCount > 0) {
+    invalidateQueryCache();
+  }
+
   return res.rowCount;
 }

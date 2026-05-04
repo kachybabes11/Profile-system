@@ -1,149 +1,292 @@
 import express from "express";
-import passport from "../config/passport.js"
-import jwt from "jsonwebtoken";
+import * as oauthService from "../services/oauthService.js";
+import * as userModel from "../models/userModel.js";
 import {
   generateAccessToken,
   generateRefreshToken,
-} from "../utils/token.js";
-import dotenv from "dotenv"
-dotenv.config()
+  verifyToken,
+  hashToken,
+  extractToken,
+} from "../services/tokenService.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.get(
-  "/github",
-  passport.authenticate("github", { scope: ["user:email"] })
-);
+/**
+ * GET /auth/github
+ * Redirect to GitHub OAuth (for web)
+ */
+router.get("/github", (req, res) => {
+  const authUrl = oauthService.getGitHubAuthorizationUrl();
+  res.redirect(authUrl);
+});
 
-router.get("/github/callback",
-  passport.authenticate("github", {
-    session: false
-  }),
-  (req, res) => {
+/**
+ * GET /auth/github/callback
+ * Handle GitHub OAuth callback (for web)
+ */
+router.get("/github/callback", async (req, res) => {
+  try {
+    const { code, error, error_description } = req.query;
 
-    const user = req.user;
+    if (error) {
+      return res.redirect(
+        `${process.env.FRONTEND_URL || "http://localhost:4000"}/login?error=${error_description}`
+      );
+    }
 
-    const payload = {
-      id: user.id,
-      username: user.username || user.displayName,
-      role: user.username === "kachybabes11" ? "admin" : "analyst"
-    };
+    if (!code) {
+      return res.status(400).json({
+        status: "error",
+        message: "Missing authorization code",
+      });
+    }
 
-    const accessToken = generateAccessToken(payload);
-    const refreshToken = generateRefreshToken(payload);
+    // Complete OAuth flow
+    const { user, accessToken, refreshToken } = await oauthService.completeOAuthFlow(code);
 
-    // 🟢 1. FOR WEB (COOKIE)
+    // Set HTTP-only cookies (web)
     res.cookie("accessToken", accessToken, {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      path: "/"
+      maxAge: 3 * 60 * 1000, // 3 minutes
     });
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      path: "/"
+      maxAge: 5 * 60 * 1000, // 5 minutes
     });
 
-    // 🟡 2. FOR CLI (TOKEN RETURN OPTION)
-    const isCLI = req.query.source === "cli";
+    // Redirect to web app
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:4000";
+    res.redirect(`${frontendUrl}/dashboard`);
+  } catch (err) {
+    console.error("OAuth callback error:", err);
+    res.status(500).json({
+      status: "error",
+      message: "Authentication failed",
+    });
+  }
+});
 
-    if (isCLI) {
-      return res.json({
-        accessToken,
-        refreshToken
+/**
+ * POST /auth/cli/login
+ * Initiate CLI OAuth flow (returns auth URL)
+ */
+router.post("/cli/login", (req, res) => {
+  try {
+    const { codeVerifier, callbackPort } = req.body;
+
+    if (!codeVerifier) {
+      return res.status(400).json({
+        status: "error",
+        message: "Missing codeVerifier",
       });
     }
 
-    // WEB REDIRECT: handoff tokens to frontend callback so frontend domain can
-    // set its own httpOnly cookies and avoid cross-domain cookie login loops.
-    const frontendBaseUrl = process.env.FRONTEND_URL || "https://profile-intelligence-fe-production.up.railway.app";
-    const redirectUrl = `${frontendBaseUrl}/auth/callback?accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken)}`;
-
-    return res.redirect(redirectUrl);
-  }
-);
-
-router.post("/cli-login", (req, res) => {
-  const { username } = req.body;
-
-  const role =
-    username === "kachybabes11" ? "admin" : "analyst";
-
-  const payload = {
-    username,
-    role,
-  };
-
-  const accessToken = jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: "30m",
-  });
-
-  const refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: "7d",
-  });
-
-  res.json({
-    accessToken,
-    refreshToken,
-    user: payload,
-  });
-});
-
-router.post("/refresh", (req, res) => {
-  const { refreshToken } = req.body;
-
-  if (!refreshToken) {
-    return res.status(401).json({
-      message: "No refresh token"
-    });
-  }
-
-  try {
-    const decoded = jwt.verify(
-      refreshToken,
-      process.env.JWT_REFRESH_SECRET
-    );
-
-    const newAccessToken = jwt.sign(
-      {
-        username: decoded.username,
-        role: decoded.role
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: "30m" }
+    const { url, codeChallenge } = oauthService.getGitHubAuthorizationUrlWithPKCE(
+      codeVerifier,
+      callbackPort || 3001
     );
 
     res.json({
-      accessToken: newAccessToken
+      status: "success",
+      auth_url: url,
+      code_challenge: codeChallenge,
     });
-
   } catch (err) {
-    return res.status(401).json({
-      message: "Invalid refresh token"
+    res.status(500).json({
+      status: "error",
+      message: "Failed to initiate login",
     });
   }
 });
 
-router.post("/cli-logout", (req, res) => {
-  const authHeader = req.headers.authorization;
+/**
+ * POST /auth/cli/callback
+ * CLI OAuth callback (exchange code for tokens)
+ */
+router.post("/auth/cli/callback", async (req, res) => {
+  try {
+    const { code } = req.body;
 
-  if (!authHeader) {
-    return res.status(400).json({
+    if (!code) {
+      return res.status(400).json({
+        status: "error",
+        message: "Missing authorization code",
+      });
+    }
+
+    // Complete OAuth flow with CLI callback path
+    const { user, accessToken, refreshToken } = await oauthService.completeOAuthFlow(code, "/auth/cli/callback");
+
+    res.json({
+      status: "success",
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+      },
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_in: 180, // 3 minutes
+    });
+  } catch (err) {
+    console.error("CLI callback error:", err);
+    res.status(401).json({
       status: "error",
-      message: "No token provided"
+      message: "Authentication failed",
     });
   }
+});
 
-  // In real systems you'd blacklist token, but for your project:
-  // we just acknowledge logout
+/**
+ * POST /auth/refresh
+ * Refresh access token using refresh token
+ */
+router.post("/auth/refresh", async (req, res) => {
+  try {
+    const { refresh_token } = req.body;
 
-  res.json({
-    status: "success",
-    message: "Logged out successfully"
-  });
+    if (!refresh_token) {
+      return res.status(401).json({
+        status: "error",
+        message: "Missing refresh token",
+      });
+    }
+
+    // Verify refresh token
+    const decoded = verifyToken(refresh_token);
+    if (!decoded || decoded.type !== "refresh") {
+      return res.status(401).json({
+        status: "error",
+        message: "Invalid or expired refresh token",
+      });
+    }
+
+    // Check if token exists and is not revoked in database
+    const tokenHash = hashToken(refresh_token);
+    const storedToken = await userModel.verifyRefreshToken(tokenHash);
+    if (!storedToken) {
+      return res.status(401).json({
+        status: "error",
+        message: "Refresh token has been revoked",
+      });
+    }
+
+    // Fetch fresh user data
+    const user = await userModel.findById(decoded.userId);
+    if (!user || !user.is_active) {
+      return res.status(403).json({
+        status: "error",
+        message: "User is not active",
+      });
+    }
+
+    // Revoke old refresh token
+    await userModel.revokeRefreshToken(tokenHash);
+
+    // Generate new token pair
+    const newAccessToken = generateAccessToken(user);
+    const newRefreshToken = generateRefreshToken(user);
+
+    // Store new refresh token
+    const newTokenHash = hashToken(newRefreshToken);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    await userModel.storeRefreshToken(user.id, newTokenHash, expiresAt);
+
+    // Set cookies for web
+    res.cookie("accessToken", newAccessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 3 * 60 * 1000,
+    });
+
+    res.cookie("refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 5 * 60 * 1000,
+    });
+
+    res.json({
+      status: "success",
+      access_token: newAccessToken,
+      refresh_token: newRefreshToken,
+      expires_in: 180,
+    });
+  } catch (err) {
+    console.error("Token refresh error:", err);
+    res.status(500).json({
+      status: "error",
+      message: "Failed to refresh token",
+    });
+  }
+});
+
+/**
+ * POST /auth/logout
+ * Logout and revoke tokens
+ */
+router.post("/auth/logout", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    // Revoke all user's refresh tokens
+    await userModel.revokeAllUserTokens(userId);
+
+    // Clear cookies
+    res.clearCookie("accessToken");
+    res.clearCookie("refreshToken");
+
+    res.json({
+      status: "success",
+      message: "Logged out successfully",
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: "error",
+      message: "Failed to logout",
+    });
+  }
+});
+
+/**
+ * GET /auth/me
+ * Get current user info
+ */
+router.get("/auth/me", authMiddleware, async (req, res) => {
+  try {
+    const user = await userModel.findById(req.user.userId);
+
+    if (!user) {
+      return res.status(404).json({
+        status: "error",
+        message: "User not found",
+      });
+    }
+
+    res.json({
+      status: "success",
+      data: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        avatar_url: user.avatar_url,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: "error",
+      message: "Failed to fetch user info",
+    });
+  }
 });
 
 export default router;

@@ -1,31 +1,53 @@
-import { verifyAccessToken } from "../utils/token.js";
+import { extractToken, verifyToken } from "../services/tokenService.js";
+import * as userModel from "../models/userModel.js";
 
 export function authMiddleware(req, res, next) {
-  let token;
+  try {
+    // Extract token from header or cookies
+    const token = extractToken(req);
 
-  // 1. CLI / Postman (priority)
-  const authHeader = req.headers.authorization;
+    if (!token) {
+      return res.status(401).json({
+        status: "error",
+        message: "Unauthorized - No token provided",
+      });
+    }
 
-  if (authHeader?.startsWith("Bearer ")) {
-    token = authHeader.split(" ")[1];
+    // Verify token
+    const decoded = verifyToken(token);
+    if (!decoded || decoded.type !== "access") {
+      return res.status(401).json({
+        status: "error",
+        message: "Invalid or expired token",
+      });
+    }
+
+    // Attach user info to request
+    req.user = decoded;
+    next();
+  } catch (err) {
+    console.error("Auth middleware error:", err);
+    res.status(401).json({
+      status: "error",
+      message: "Authentication failed",
+    });
   }
+}
 
-  // 2. Web fallback (cookie)
-  if (!token && req.cookies?.accessToken) {
-    token = req.cookies.accessToken;
+export function optionalAuthMiddleware(req, res, next) {
+  try {
+    const token = extractToken(req);
+
+    if (token) {
+      const decoded = verifyToken(token);
+      if (decoded && decoded.type === "access") {
+        req.user = decoded;
+      }
+    }
+
+    next();
+  } catch (err) {
+    // Continue without auth
+    next();
   }
-
-  if (!token) {
-    return res.status(401).json({ message: "Unauthorized - No token provided" });
-  }
-
-  const decoded = verifyAccessToken(token);
-
-  if (!decoded) {
-    return res.status(401).json({ message: "Invalid or expired token" });
-  }
-
-  req.user = decoded;
-  req.user.isAdmin = decoded.role === "admin";
-  next();
 }
