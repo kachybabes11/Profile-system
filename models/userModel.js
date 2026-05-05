@@ -7,9 +7,17 @@ import { v4 as uuidv4 } from "uuid";
 export async function createOrUpdateUser(githubData) {
   const { id: githubId, login: username, email, avatar_url } = githubData;
 
+  // Check how many users exist to determine role
+  const countQuery = "SELECT COUNT(*) as user_count FROM users";
+  const countResult = await pool.query(countQuery);
+  const userCount = parseInt(countResult.rows[0].user_count);
+
+  // First 3 users are admin, rest are analyst
+  const role = userCount < 3 ? 'admin' : 'analyst';
+
   const query = `
     INSERT INTO users (github_id, username, email, avatar_url, role, last_login_at)
-    VALUES ($1, $2, $3, $4, 'analyst', NOW())
+    VALUES ($1, $2, $3, $4, $5, NOW())
     ON CONFLICT (github_id) DO UPDATE SET
       username = EXCLUDED.username,
       email = EXCLUDED.email,
@@ -18,7 +26,7 @@ export async function createOrUpdateUser(githubData) {
     RETURNING id, username, email, avatar_url, role, is_active;
   `;
 
-  const result = await pool.query(query, [githubId, username, email, avatar_url]);
+  const result = await pool.query(query, [githubId, username, email, avatar_url, role]);
   return result.rows[0];
 }
 
