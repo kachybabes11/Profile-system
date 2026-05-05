@@ -53,8 +53,9 @@ router.get("/github/callback", async (req, res) => {
       });
     }
 
-    // Complete OAuth flow
-    const { user, accessToken, refreshToken } = await oauthService.completeOAuthFlow(code);
+    // Complete OAuth FLOW
+
+    const { user, accessToken, refreshToken } = await oauthService.completeOAuthFlow(code, "/auth/github/callback");
 
     console.log(`[WEB OAuth Success] User ${user.username} authenticated`);
 
@@ -93,7 +94,7 @@ router.get("/github/callback", async (req, res) => {
  */
 router.post("/cli/login", (req, res) => {
   try {
-    const { codeVerifier, callbackPort } = req.body;
+    const { codeVerifier } = req.body;
 
     if (!codeVerifier) {
       return res.status(400).json({
@@ -102,18 +103,17 @@ router.post("/cli/login", (req, res) => {
       });
     }
 
-    const { url, codeChallenge } = oauthService.getGitHubAuthorizationUrlWithPKCE(
-      codeVerifier,
-      callbackPort || 3001
+    const { url } = oauthService.getGitHubAuthorizationUrlWithPKCE(
+      codeVerifier
     );
 
-    res.json({
+    return res.json({
       status: "success",
       auth_url: url,
-      code_challenge: codeChallenge,
     });
+
   } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       status: "error",
       message: "Failed to initiate login",
     });
@@ -124,36 +124,28 @@ router.post("/cli/login", (req, res) => {
  * POST /auth/cli/callback
  * CLI OAuth callback (exchange code for tokens)
  */
-router.post("/cli/callback", async (req, res) => {
+router.get("/cli/callback", async (req, res) => {
   try {
-    const { code, codeVerifier, redirect_uri } = req.body;
+    const { code } = req.query;
 
     console.log("\n[CLI OAuth Callback]", {
       code: code ? code.substring(0, 10) : null,
-      codeVerifier: codeVerifier ? `${codeVerifier.substring(0, 10)}...` : null,
-      redirect_uri,
     });
 
     if (!code) {
-      console.error("[CLI OAuth Error] Missing authorization code");
       return res.status(400).json({
         status: "error",
         message: "Missing authorization code",
-        hint: "CLI flow requires 'code' parameter",
       });
     }
 
-    // Complete OAuth flow with CLI callback path
-    const callbackUrl = redirect_uri || process.env.GITHUB_REDIRECT_URL;
-    const { user, accessToken, refreshToken } = await oauthService.completeOAuthFlow(
-      code,
-      callbackUrl,
-      codeVerifier
-    );
+    const { user, accessToken, refreshToken } =
+      await oauthService.completeOAuthFlow(
+        code,
+        "/auth/cli/callback" 
+      );
 
-    console.log(`[CLI OAuth Success] User ${user.username} authenticated`);
-
-    res.json({
+    return res.json({
       status: "success",
       user: {
         id: user.id,
@@ -163,18 +155,16 @@ router.post("/cli/callback", async (req, res) => {
       },
       access_token: accessToken,
       refresh_token: refreshToken,
-      expires_in: 180, // 3 minutes
+      expires_in: 180,
     });
+
   } catch (err) {
-    console.error("[CLI OAuth Error] Authentication flow failed:", err.message);
-    
-    // Return detailed error for CLI debugging
-    res.status(401).json({
+    console.error("[CLI OAuth Error]", err.message);
+
+    return res.status(401).json({
       status: "error",
       message: "Authentication failed",
       details: err.message,
-      error_code: err.name || "OAUTH_ERROR",
-      hint: "Check that code is valid, redirect_uri matches GitHub app, and environment variables are set.",
     });
   }
 });

@@ -101,17 +101,15 @@ export function getGitHubAuthorizationUrl(callbackUrl = "/auth/github/callback")
 /**
  * Get GitHub authorization URL for CLI with PKCE
  */
-export function getGitHubAuthorizationUrlWithPKCE(codeVerifier, callbackPort = 3001) {
+export function getGitHubAuthorizationUrlWithPKCE(codeVerifier) {
   const codeChallenge = generateCodeChallenge(codeVerifier);
   const scopes = ["read:user", "user:email"];
-  const redirectUri = resolveRedirectUri("/auth/github/callback");
 
-  const state = Buffer.from(JSON.stringify({ codeChallenge })).toString("base64");
+  // ✅ MUST point to CLI callback
+  const redirectUri = `${process.env.BACKEND_URL}/auth/cli/callback`;
 
   return {
-    url: `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${redirectUri}&scope=${scopes.join(
-      ","
-    )}&allow_signup=false&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`,
+    url: `https://github.com/login/oauth/authorize?client_id=${process.env.GITHUB_CLIENT_ID}&redirect_uri=${redirectUri}&scope=${scopes.join(",")}&code_challenge=${codeChallenge}&code_challenge_method=S256`,
     codeChallenge,
   };
 }
