@@ -104,7 +104,7 @@ export function getGitHubAuthorizationUrl(callbackUrl = "/auth/github/callback")
 export function getGitHubAuthorizationUrlWithPKCE(codeVerifier, callbackPort = 3001) {
   const codeChallenge = generateCodeChallenge(codeVerifier);
   const scopes = ["read:user", "user:email"];
-  const redirectUri = GITHUB_REDIRECT_URL;
+  const redirectUri = resolveRedirectUri("/auth/github/callback");
 
   const state = Buffer.from(JSON.stringify({ codeChallenge })).toString("base64");
 
@@ -124,8 +124,8 @@ export async function exchangeCodeForGitHubToken(code, callbackUrl = "/auth/gith
     const redirectUri = resolveRedirectUri(callbackUrl);
 
     console.log("[OAuth Step 1] Exchanging code for GitHub token");
-    console.log(`  - Code: ${code.substring(0, 10)}...`);
-    console.log(`  - Redirect URI: ${GITHUB_REDIRECT_URL}`);
+    console.log(`  - Code: ${code ? code.substring(0, 10) : "MISSING"}`);
+    console.log(`  - Redirect URI USED: ${redirectUri}`);
     console.log(`  - Client ID: ${GITHUB_CLIENT_ID ? "✓" : "✗ MISSING"}`);
     console.log(`  - Client Secret: ${GITHUB_CLIENT_SECRET ? "✓" : "✗ MISSING"}`);
 

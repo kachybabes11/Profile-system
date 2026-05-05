@@ -65,7 +65,7 @@ router.get("/github/callback", async (req, res) => {
       sameSite: "lax",
       maxAge: 3 * 60 * 1000, // 3 minutes
     });
-
+  
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -129,7 +129,7 @@ router.post("/cli/callback", async (req, res) => {
     const { code, codeVerifier, redirect_uri } = req.body;
 
     console.log("\n[CLI OAuth Callback]", {
-      code: code ? `${code.substring(0, 10)}...` : null,
+      code: code ? code.substring(0, 10) : null,
       codeVerifier: codeVerifier ? `${codeVerifier.substring(0, 10)}...` : null,
       redirect_uri,
     });
@@ -144,7 +144,7 @@ router.post("/cli/callback", async (req, res) => {
     }
 
     // Complete OAuth flow with CLI callback path
-    const callbackUrl = redirect_uri || "/auth/github/callback";
+    const callbackUrl = redirect_uri || process.env.GITHUB_REDIRECT_URL;
     const { user, accessToken, refreshToken } = await oauthService.completeOAuthFlow(
       code,
       callbackUrl,
