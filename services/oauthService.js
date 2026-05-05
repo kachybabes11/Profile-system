@@ -115,7 +115,7 @@ if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
 export function getGitHubAuthorizationUrl(callbackUrl = OAUTH_CALLBACK_PATH) {
   const scopes = ["read:user", "user:email"];
   const redirectUri = resolveRedirectUri(callbackUrl);
-  const state = createO]AuthState("web");
+  const state = createOAuthState("web");
 
   return {
     url: `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${redirectUri}&scope=${scopes.join(",")}&state=${encodeURIComponent(state)}&allow_signup=false`,
