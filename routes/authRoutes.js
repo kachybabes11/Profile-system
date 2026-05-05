@@ -103,33 +103,34 @@ router.post("/cli/login", (req, res) => {
       });
     }
 
-    const { url } = oauthService.getGitHubAuthorizationUrlWithPKCE(
-      codeVerifier
-    );
+    const { url, state } = oauthService.getGitHubAuthorizationUrlWithPKCE(codeVerifier);
 
     return res.json({
       status: "success",
       auth_url: url,
+      state,
     });
 
   } catch (err) {
     return res.status(500).json({
       status: "error",
       message: "Failed to initiate login",
+      details: err.message,
     });
   }
 });
 
 /**
- * POST /auth/cli/callback
+ * GET /auth/cli/callback
  * CLI OAuth callback (exchange code for tokens)
  */
 router.get("/cli/callback", async (req, res) => {
   try {
-    const { code } = req.query;
+    const { code, state } = req.query;
 
     console.log("\n[CLI OAuth Callback]", {
       code: code ? code.substring(0, 10) : null,
+      state: state ? `${state.substring(0, 10)}...` : null,
     });
 
     if (!code) {
@@ -142,7 +143,9 @@ router.get("/cli/callback", async (req, res) => {
     const { user, accessToken, refreshToken } =
       await oauthService.completeOAuthFlow(
         code,
-        "/auth/cli/callback" 
+        "/auth/cli/callback",
+        undefined,
+        state
       );
 
     return res.json({

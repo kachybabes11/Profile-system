@@ -13,6 +13,17 @@ const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
 const GITHUB_REDIRECT_URL = process.env.GITHUB_REDIRECT_URL || "http://localhost:3000/auth/github/callback";
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:3000";
+const CLI_REDIRECT_PATH = "/auth/cli/callback";
+const cliPkceStateStore = new Map();
+
+export function getPkceCodeVerifierFromState(state) {
+  if (!state) {
+    return null;
+  }
+  const verifier = cliPkceStateStore.get(state);
+  cliPkceStateStore.delete(state);
+  return verifier || null;
+}
 
 /**
  * Validate OAuth configuration at startup
@@ -102,24 +113,35 @@ export function getGitHubAuthorizationUrl(callbackUrl = "/auth/github/callback")
  * Get GitHub authorization URL for CLI with PKCE
  */
 export function getGitHubAuthorizationUrlWithPKCE(codeVerifier) {
+  if (!codeVerifier) {
+    throw new Error("codeVerifier is required for CLI PKCE flow");
+  }
+
   const codeChallenge = generateCodeChallenge(codeVerifier);
   const scopes = ["read:user", "user:email"];
+  const state = generateCodeVerifier();
+  cliPkceStateStore.set(state, codeVerifier);
 
-  // ✅ MUST point to CLI callback
-  const redirectUri = `${process.env.BACKEND_URL}/auth/cli/callback`;
+  const redirectUri = `${BACKEND_URL}${CLI_REDIRECT_PATH}`;
 
   return {
-    url: `https://github.com/login/oauth/authorize?client_id=${process.env.GITHUB_CLIENT_ID}&redirect_uri=${redirectUri}&scope=${scopes.join(",")}&code_challenge=${codeChallenge}&code_challenge_method=S256`,
+    url: `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${redirectUri}&scope=${scopes.join(",")}&code_challenge=${codeChallenge}&code_challenge_method=S256&state=${encodeURIComponent(state)}`,
     codeChallenge,
+    state,
   };
 }
 
 /**
  * Exchange OAuth code for access token from GitHub
  */
-export async function exchangeCodeForGitHubToken(code, callbackUrl = "/auth/github/callback", codeVerifier) {
+export async function exchangeCodeForGitHubToken(code, callbackUrl = "/auth/github/callback", codeVerifier, state) {
   try {
     const redirectUri = resolveRedirectUri(callbackUrl);
+
+    if (!codeVerifier && state) {
+      codeVerifier = getPkceCodeVerifierFromState(state);
+      console.log(`  - PKCE state resolved: ${state}`);
+    }
 
     console.log("[OAuth Step 1] Exchanging code for GitHub token");
     console.log(`  - Code: ${code ? code.substring(0, 10) : "MISSING"}`);
@@ -143,6 +165,10 @@ export async function exchangeCodeForGitHubToken(code, callbackUrl = "/auth/gith
     if (codeVerifier) {
       requestBody.code_verifier = codeVerifier;
       console.log(`  - PKCE Code Verifier: ${codeVerifier.substring(0, 10)}...`);
+    } else if (callbackUrl === CLI_REDIRECT_PATH) {
+      throw new Error(
+        "Missing PKCE code verifier for CLI callback. Ensure the CLI flow saved the PKCE state and passed it back on callback."
+      );
     }
 
     const response = await axios.post(
@@ -231,12 +257,12 @@ export async function fetchGitHubUser(accessToken) {
 /**
  * Complete OAuth flow: exchange code for user and generate tokens
  */
-export async function completeOAuthFlow(code, callbackUrl = "/auth/github/callback", codeVerifier) {
+export async function completeOAuthFlow(code, callbackUrl = "/auth/github/callback", codeVerifier, state) {
   try {
     console.log("\n🔐 ===== OAUTH FLOW START =====");
 
     // Step 1: Exchange code for GitHub access token
-    const gitHubAccessToken = await exchangeCodeForGitHubToken(code, callbackUrl, codeVerifier);
+    const gitHubAccessToken = await exchangeCodeForGitHubToken(code, callbackUrl, codeVerifier, state);
 
     // Step 2: Fetch user info
     const gitHubUser = await fetchGitHubUser(gitHubAccessToken);
