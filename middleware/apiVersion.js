@@ -3,12 +3,8 @@
  * Requires X-API-Version header on all /api/* requests
  */
 export function apiVersionMiddleware(req, res, next) {
-  // Skip version check for non-API endpoints
-  if (!req.path.startsWith("/api/")) {
-    return next();
-  }
-
-  // Skip version check for health/status endpoints
+  // X-API-Version is required for all API routes mounted here.
+  // This middleware is only applied to /api/* endpoints.
   if (req.path.includes("/health") || req.path.includes("/status")) {
     return next();
   }

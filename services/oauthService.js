@@ -26,7 +26,7 @@ function resolveRedirectUri(callbackUrl) {
 }
 
 if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
-  console.warn("⚠️  GitHub OAuth not configured. Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET.");
+  console.warn(" GitHub OAuth not configured. Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET.");
 }
 
 /**
@@ -49,13 +49,12 @@ export function getGitHubAuthorizationUrlWithPKCE(codeVerifier, callbackPort = 3
   const scopes = ["read:user", "user:email"];
   const redirectUri = `http://localhost:${callbackPort}/callback`;
 
-  // Note: GitHub doesn't support PKCE, but we'll use state for validation
   const state = Buffer.from(JSON.stringify({ codeChallenge })).toString("base64");
 
   return {
     url: `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${redirectUri}&scope=${scopes.join(
       ","
-    )}&allow_signup=false&state=${state}`,
+    )}&allow_signup=false&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`,
     codeChallenge,
   };
 }
@@ -63,18 +62,24 @@ export function getGitHubAuthorizationUrlWithPKCE(codeVerifier, callbackPort = 3
 /**
  * Exchange OAuth code for access token from GitHub
  */
-export async function exchangeCodeForGitHubToken(code, callbackUrl = "/auth/github/callback") {
+export async function exchangeCodeForGitHubToken(code, callbackUrl = "/auth/github/callback", codeVerifier) {
   try {
     const redirectUri = resolveRedirectUri(callbackUrl);
 
+    const requestBody = {
+      client_id: GITHUB_CLIENT_ID,
+      client_secret: GITHUB_CLIENT_SECRET,
+      code,
+      redirect_uri: redirectUri,
+    };
+
+    if (codeVerifier) {
+      requestBody.code_verifier = codeVerifier;
+    }
+
     const response = await axios.post(
       "https://github.com/login/oauth/access_token",
-      {
-        client_id: GITHUB_CLIENT_ID,
-        client_secret: GITHUB_CLIENT_SECRET,
-        code,
-        redirect_uri: redirectUri,
-      },
+      requestBody,
       {
         headers: { Accept: "application/json" },
       }
@@ -126,10 +131,10 @@ export async function fetchGitHubUser(accessToken) {
 /**
  * Complete OAuth flow: exchange code for user and generate tokens
  */
-export async function completeOAuthFlow(code, callbackUrl = "/auth/github/callback") {
+export async function completeOAuthFlow(code, callbackUrl = "/auth/github/callback", codeVerifier) {
   try {
     // Step 1: Exchange code for GitHub access token
-    const gitHubAccessToken = await exchangeCodeForGitHubToken(code, callbackUrl);
+    const gitHubAccessToken = await exchangeCodeForGitHubToken(code, callbackUrl, codeVerifier);
 
     // Step 2: Fetch user info
     const gitHubUser = await fetchGitHubUser(gitHubAccessToken);

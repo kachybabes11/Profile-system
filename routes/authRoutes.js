@@ -111,7 +111,7 @@ router.post("/cli/login", (req, res) => {
  */
 router.post("/cli/callback", async (req, res) => {
   try {
-    const { code } = req.body;
+    const { code, codeVerifier, redirect_uri } = req.body;
 
     if (!code) {
       return res.status(400).json({
@@ -121,7 +121,12 @@ router.post("/cli/callback", async (req, res) => {
     }
 
     // Complete OAuth flow with CLI callback path
-    const { user, accessToken, refreshToken } = await oauthService.completeOAuthFlow(code, "/cli/callback");
+    const callbackUrl = redirect_uri || "/cli/callback";
+    const { user, accessToken, refreshToken } = await oauthService.completeOAuthFlow(
+      code,
+      callbackUrl,
+      codeVerifier
+    );
 
     res.json({
       status: "success",
@@ -257,10 +262,10 @@ router.post("/logout", authMiddleware, async (req, res) => {
 });
 
 /**
- * GET /auth/me
+ * GET /me
  * Get current user info
  */
-router.get("/auth/me", authMiddleware, async (req, res) => {
+router.get("/me", authMiddleware, async (req, res) => {
   try {
     const user = await userModel.findById(req.user.userId);
 

@@ -15,14 +15,14 @@ import { apiVersionMiddleware } from "../middleware/apiVersion.js";
 const router = express.Router();
 
 router.post("/profiles", apiVersionMiddleware, authMiddleware, requireRole('admin'), createProfile);
-router.get("/profiles", apiVersionMiddleware, authMiddleware, requireRole('admin'), getProfiles);
+router.get("/profiles", apiVersionMiddleware, authMiddleware, requireRole('admin', 'analyst'), getProfiles);
 
-router.get("/profiles/export", apiVersionMiddleware, authMiddleware, requireRole("admin"), exportProfiles)
-router.get("/profiles/search", apiVersionMiddleware, authMiddleware, searchProfiles);
+router.get("/profiles/export", apiVersionMiddleware, authMiddleware, requireRole("admin", "analyst"), exportProfiles);
+router.get("/profiles/search", apiVersionMiddleware, authMiddleware, requireRole("admin", "analyst"), searchProfiles);
 
 router.post("/profiles/upload/csv", apiVersionMiddleware, authMiddleware, requireRole("admin"), uploadProfilesCSV);
 
-router.get("/profiles/:id", apiVersionMiddleware, authMiddleware, getSingleProfile);
+router.get("/profiles/:id", apiVersionMiddleware, authMiddleware, requireRole("admin", "analyst"), getSingleProfile);
 router.delete("/profiles/:id", apiVersionMiddleware, authMiddleware, requireRole("admin"), deleteProfile);
 
 

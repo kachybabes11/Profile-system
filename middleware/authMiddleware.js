@@ -1,7 +1,7 @@
 import { extractToken, verifyToken } from "../services/tokenService.js";
 import * as userModel from "../models/userModel.js";
 
-export function authMiddleware(req, res, next) {
+export async function authMiddleware(req, res, next) {
   try {
     // Extract token from header or cookies
     const token = extractToken(req);
@@ -22,8 +22,20 @@ export function authMiddleware(req, res, next) {
       });
     }
 
-    // Attach user info to request
-    req.user = decoded;
+    // Check user active status in database
+    const user = await userModel.findById(decoded.userId);
+    if (!user || !user.is_active) {
+      return res.status(403).json({
+        status: "error",
+        message: "User is not active",
+      });
+    }
+
+    req.user = {
+      ...decoded,
+      role: user.role,
+      username: user.username,
+    };
     next();
   } catch (err) {
     console.error("Auth middleware error:", err);
