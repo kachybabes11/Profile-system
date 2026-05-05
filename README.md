@@ -113,116 +113,25 @@ OAuth callback
 GET	/auth/logout	
 Logout user
 
+GET	/auth/me	
+Get current user
+
 Profile Routes
-GET	/api/v1/profiles	
+GET	/api/profiles	
 Get all profiles
 
-GET	/api/v1/profiles/:id	
+GET	/api/profiles/:id	
 Get single profile
 
-GET	/api/v1/profiles/search?q=	
+GET	/api/profiles/search?q=	
 Search profiles
 
 Protected Routes (Admin Only)
-POST	/api/v1/profiles	
+POST	/api/profiles	
 Create profile
 
-DELETE	/api/v1/profiles/:id	
+DELETE	/api/profiles/:id	
 Delete profile
-
-Insighta Routes
-Method	Endpoint	Description
-GET	/insighta/me	
-Get current user
-
-GET	/insighta/role	
-Get current user role
-
- MANUAL BACKEND TESTING (POSTMAN / CURL)
-This section explains how to test the backend manually using Postman or terminal.
-
-🔐 1.  Login Test
-Endpoint:
-GET /auth/cli-login
-
-Expected Behaviour:
-Logs in user and gives tokens
-Session is created
-Expected Response (callback success):
-{
-    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImthY2h5YmFiZXMxMSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc3NzU3MzkwOCwiZXhwIjoxNzc3NTc1NzA4fQ.FDOpeaOZs5NG01rPvhVSFB68EnNHhuHmkQnA4JzGYAA",
-    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImthY2h5YmFiZXMxMSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc3NzU3MzkwOCwiZXhwIjoxNzc4MTc4NzA4fQ.xTFEkYgb2tyQF8Y9tu3QLN2wKz924OIAlQD9ld2wfZg",
-    "user": {
-        "username": "kachybabes11",
-        "role": "admin"
-    }
-}
-
-👤 2. Get All Profiles
-Request:
-GET /api/v1/profiles
-x-api-version: 1
-
-Expected Response:
-{
-    "status": "success",
-    "page": 1,
-    "limit": 10,
-    "total": 2034,
-    "data": []
-}
-
- 3. Search Profile
-Request:
-GET /api/v1/profiles/search?q=john
-x-api-version: 1
-Expected Response:
-{
-    "status": "success",
-    "page": 1,
-    "limit": 10,
-    "total": 2034,
-    "data": []
-}
-4. Create Profile (Admin Only)
-Request:
-POST /api/v1/profiles
-x-api-version: 1
-Content-Type: application/json
-Authorization: Bearer <token>
-Body:
-{
-  "name": "Laurel",
-}
-Expected Response:
-{
-    "status": "success",
-    "data": {
-        "id": "019ddfcd-115f-7d9a-b0b7-c74e7cd8bacc",
-        "name": "laurel",
-        "gender": "female",
-        "gender_probability": 0.91,
-        "age": 75,
-        "age_group": "senior",
-        "country_id": "PH",
-        "country_probability": 0.2210874936409635,
-        "created_at": "2026-04-30T19:10:51.743Z"
-    }
-}
-
- 5. Delete Profile (Admin Only)
-Request:
-DELETE /api/v1/profiles/:id
-x-api-version: 1
-Authorization: Bearer <token>
-Expected Response:
-{
-    "status": "success",
-    "message": "Profile deleted successfully",
-    "data": {
-        "id": "019ddfcd-115f-7d9a-b0b7-c74e7cd8bacc"
-    }
-}
 
 Environment Variables
 GITHUB_CLIENT_ID=
@@ -236,8 +145,6 @@ npm install
 npm run dev
 
 📚 Performance Optimization Documentation
-
-New to v1.0:
 
 [OPTIMIZATION_SUMMARY.md](./OPTIMIZATION_SUMMARY.md) - Quick overview of all optimizations
 [OPTIMIZATION_GUIDE.md](./OPTIMIZATION_GUIDE.md) - Complete guide (query caching, normalization, CSV ingestion)

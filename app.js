@@ -56,7 +56,6 @@ app.use(cors({
   credentials: true
 }));
 
-// Add upload middleware to profile routes that need it
 app.use("/api", (req, res, next) => {
   if ((req.path === "/profiles/upload/csv" || req.path === "/profiles/upload/csv/validate") && req.method === "POST") {
     return upload.single("file")(req, res, next);
