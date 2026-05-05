@@ -23,7 +23,7 @@ router.get("/github", (req, res) => {
 
 /**
  * GET /auth/github/callback
- * Handle GitHub OAuth callback (for web)
+ * Handle GitHub OAuth callback (for web)]
  */
 router.get("/github/callback", async (req, res) => {
   try {
@@ -113,7 +113,7 @@ router.get("/github/callback", async (req, res) => {
     });
 
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:4000";
-    return res.redirect(`${frontendUrl}/dashboard`);
+    return res.redirect(`${frontendUrl}/auth/callback?accessToken=${accessToken}&refreshToken=${refreshToken}`);
   } catch (err) {
     console.error("[WEB OAuth Error] Authentication flow failed:", err.message);
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:4000";
