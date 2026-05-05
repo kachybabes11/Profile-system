@@ -109,7 +109,7 @@ router.post("/cli/login", (req, res) => {
  * POST /auth/cli/callback
  * CLI OAuth callback (exchange code for tokens)
  */
-router.post("/auth/cli/callback", async (req, res) => {
+router.post("/cli/callback", async (req, res) => {
   try {
     const { code } = req.body;
 
@@ -121,7 +121,7 @@ router.post("/auth/cli/callback", async (req, res) => {
     }
 
     // Complete OAuth flow with CLI callback path
-    const { user, accessToken, refreshToken } = await oauthService.completeOAuthFlow(code, "/auth/cli/callback");
+    const { user, accessToken, refreshToken } = await oauthService.completeOAuthFlow(code, "/cli/callback");
 
     res.json({
       status: "success",
@@ -148,7 +148,7 @@ router.post("/auth/cli/callback", async (req, res) => {
  * POST /auth/refresh
  * Refresh access token using refresh token
  */
-router.post("/auth/refresh", async (req, res) => {
+router.post("/refresh", async (req, res) => {
   try {
     const { refresh_token } = req.body;
 
@@ -233,7 +233,7 @@ router.post("/auth/refresh", async (req, res) => {
  * POST /auth/logout
  * Logout and revoke tokens
  */
-router.post("/auth/logout", authMiddleware, async (req, res) => {
+router.post("/logout", authMiddleware, async (req, res) => {
   try {
     const userId = req.user.userId;
 

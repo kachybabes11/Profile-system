@@ -11,6 +11,19 @@ import {
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
 const GITHUB_REDIRECT_URL = process.env.GITHUB_REDIRECT_URL || "http://localhost:3000/auth/github/callback";
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:3000";
+
+function resolveRedirectUri(callbackUrl) {
+  if (callbackUrl?.startsWith("http://") || callbackUrl?.startsWith("https://")) {
+    return callbackUrl;
+  }
+
+  if (callbackUrl === "/auth/github/callback") {
+    return GITHUB_REDIRECT_URL;
+  }
+
+  return `${BACKEND_URL}${callbackUrl}`;
+}
 
 if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
   console.warn("⚠️  GitHub OAuth not configured. Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET.");
@@ -21,7 +34,7 @@ if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
  */
 export function getGitHubAuthorizationUrl(callbackUrl = "/auth/github/callback") {
   const scopes = ["read:user", "user:email"];
-  const redirectUri = GITHUB_REDIRECT_URL;
+  const redirectUri = resolveRedirectUri(callbackUrl);
 
   return `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${redirectUri}&scope=${scopes.join(
     ","
@@ -52,7 +65,7 @@ export function getGitHubAuthorizationUrlWithPKCE(codeVerifier, callbackPort = 3
  */
 export async function exchangeCodeForGitHubToken(code, callbackUrl = "/auth/github/callback") {
   try {
-    const redirectUri = `${BACKEND_URL}${callbackUrl}`;
+    const redirectUri = resolveRedirectUri(callbackUrl);
 
     const response = await axios.post(
       "https://github.com/login/oauth/access_token",
