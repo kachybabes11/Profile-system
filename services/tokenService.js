@@ -83,18 +83,19 @@ export function generateState() {
 }
 
 /**
- * Extract token from Authorization header or cookies
+ * Extract token from cookies or optionally from Authorization header.
  */
-export function extractToken(req) {
-  // Check Authorization header
-  const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith("Bearer ")) {
-    return authHeader.split(" ")[1];
-  }
-
-  // Check cookies
+export function extractToken(req, { allowAuthorizationHeader = true } = {}) {
+  // Prefer cookie token for web sessions
   if (req.cookies?.accessToken) {
     return req.cookies.accessToken;
+  }
+
+  if (allowAuthorizationHeader) {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      return authHeader.split(" ")[1];
+    }
   }
 
   return null;

@@ -225,35 +225,6 @@ async function uploadCSV(filePath, token) {
 }
 
 uploadCSV('./profiles.csv', 'your_jwt_token_here');
-```
-
-### Python (requests)
-
-```python
-import requests
-
-token = 'your_jwt_token_here'
-file_path = 'profiles.csv'
-
-with open(file_path, 'rb') as f:
-    files = {'file': f}
-    headers = {'Authorization': f'Bearer {token}'}
-    
-    response = requests.post(
-        'http://localhost:3000/api/v1/profiles/upload/csv',
-        headers=headers,
-        files=files
-    )
-
-result = response.json()
-
-if result['status'] == 'success':
-    print(f"✓ Inserted: {result['inserted']}")
-    print(f"⊘ Skipped: {result['skipped']}")
-    print(f"Reasons: {result['reasons']}")
-else:
-    print(f"Error: {result['message']}")
-```
 
 ## Response Analysis
 

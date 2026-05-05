@@ -6,9 +6,16 @@ import {
   generateRefreshToken,
   verifyToken,
   hashToken,
-  extractToken,
 } from "../services/tokenService.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
+
+const isProduction = process.env.NODE_ENV === "production";
+const webCookieOptions = {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: isProduction ? "none" : "lax",
+  path: "/",
+};
 
 const router = express.Router();
 
@@ -52,7 +59,7 @@ router.get("/github/callback", async (req, res) => {
       }
 
       return res.redirect(
-        `${process.env.FRONTEND_URL || "http://localhost:4000"}/login?error=${encodeURIComponent(
+        `${process.env.FRONTEND_URL || "http://localhost:4000"}/?error=${encodeURIComponent(
           errorMessage
         )}`
       );
@@ -99,26 +106,22 @@ router.get("/github/callback", async (req, res) => {
 
     console.log(`[WEB OAuth Success] User ${user.username} authenticated`);
     res.cookie("accessToken", accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      ...webCookieOptions,
       maxAge: 3 * 60 * 1000,
     });
 
     res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      ...webCookieOptions,
       maxAge: 5 * 60 * 1000,
     });
 
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:4000";
-    return res.redirect(`${frontendUrl}/auth/callback?accessToken=${accessToken}&refreshToken=${refreshToken}`);
+    return res.redirect(`${frontendUrl}/dashboard`);
   } catch (err) {
     console.error("[WEB OAuth Error] Authentication flow failed:", err.message);
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:4000";
     res.redirect(
-      `${frontendUrl}/login?error=${encodeURIComponent(
+      `${frontendUrl}/?error=${encodeURIComponent(
         "Authentication failed: " + err.message
       )}`
     );
@@ -164,9 +167,9 @@ router.post("/cli/login", (req, res) => {
  */
 router.post("/refresh", async (req, res) => {
   try {
-    const { refresh_token } = req.body;
+    const refreshToken = req.body.refresh_token || req.cookies?.refreshToken;
 
-    if (!refresh_token) {
+    if (!refreshToken) {
       return res.status(401).json({
         status: "error",
         message: "Missing refresh token",
@@ -174,7 +177,7 @@ router.post("/refresh", async (req, res) => {
     }
 
     // Verify refresh token
-    const decoded = verifyToken(refresh_token);
+    const decoded = verifyToken(refreshToken);
     if (!decoded || decoded.type !== "refresh") {
       return res.status(401).json({
         status: "error",
@@ -183,7 +186,7 @@ router.post("/refresh", async (req, res) => {
     }
 
     // Check if token exists and is not revoked in database
-    const tokenHash = hashToken(refresh_token);
+    const tokenHash = hashToken(refreshToken);
     const storedToken = await userModel.verifyRefreshToken(tokenHash);
     if (!storedToken) {
       return res.status(401).json({
@@ -215,16 +218,12 @@ router.post("/refresh", async (req, res) => {
 
     // Set cookies for web
     res.cookie("accessToken", newAccessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      ...webCookieOptions,
       maxAge: 3 * 60 * 1000,
     });
 
     res.cookie("refreshToken", newRefreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      ...webCookieOptions,
       maxAge: 5 * 60 * 1000,
     });
 
@@ -255,8 +254,14 @@ router.post("/logout", authMiddleware, async (req, res) => {
     await userModel.revokeAllUserTokens(userId);
 
     // Clear cookies
-    res.clearCookie("accessToken");
-    res.clearCookie("refreshToken");
+    res.clearCookie("accessToken", {
+      ...webCookieOptions,
+      maxAge: 0,
+    });
+    res.clearCookie("refreshToken", {
+      ...webCookieOptions,
+      maxAge: 0,
+    });
 
     res.json({
       status: "success",

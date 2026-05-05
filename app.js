@@ -3,14 +3,12 @@ import os from "os";
 import path from "path";
 import express from "express";
 import cookieParser from "cookie-parser";
-import session from "express-session";
 import authRoutes from "./routes/authRoutes.js";
 import profileRoutes from "./routes/profileRoutes.js";
 
 import { rateLimiter } from "./middleware/rateLimiter.js";
 import { logger } from "./middleware/logger.js";
 import { apiVersionMiddleware } from "./middleware/apiVersion.js";
-import { csrfTokenMiddleware, validateCsrfToken } from "./middleware/csrf.js";
 import cors from "cors";
 import multer from "multer";
 
@@ -58,13 +56,6 @@ app.use(cors({
   credentials: true
 }));
 
-// Session middleware only needed for CSRF protection
-app.use(session({
-  secret: process.env.SESSION_SECRET || process.env.JWT_SECRET || "changeme",
-  resave: false,
-  saveUninitialized: false
-}));
-
 // Add upload middleware to profile routes that need it
 app.use("/api", (req, res, next) => {
   if ((req.path === "/profiles/upload/csv" || req.path === "/profiles/upload/csv/validate") && req.method === "POST") {
@@ -75,10 +66,6 @@ app.use("/api", (req, res, next) => {
 
 app.use("/auth", authRoutes);
 app.use("/api", apiVersionMiddleware, profileRoutes);
-
-// CSRF protection for web routes (when implemented)
-app.use("/web", csrfTokenMiddleware);
-app.use("/web", validateCsrfToken);
 
 // Health check endpoint
 app.get("/health", (req, res) => {
