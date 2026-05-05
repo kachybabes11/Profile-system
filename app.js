@@ -1,3 +1,6 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
 import express from "express";
 import cookieParser from "cookie-parser";
 import session from "express-session";
@@ -13,9 +16,17 @@ import multer from "multer";
 
 const app = express();
 
+const uploadDir = path.join(os.tmpdir(), "insighta-uploads");
+fs.mkdirSync(uploadDir, { recursive: true });
+
 // Multer configuration for file uploads
 const upload = multer({
-  storage: multer.memoryStorage(), // Keep files in memory for streaming
+  storage: multer.diskStorage({
+    destination: uploadDir,
+    filename: (req, file, cb) => {
+      cb(null, `${Date.now()}-${file.originalname}`);
+    },
+  }),
   limits: {
     fileSize: 100 * 1024 * 1024, // 100 MB max file size
   },
@@ -56,7 +67,7 @@ app.use(session({
 
 // Add upload middleware to profile routes that need it
 app.use("/api", (req, res, next) => {
-  if (req.path === "/profiles/upload/csv" && req.method === "POST") {
+  if ((req.path === "/profiles/upload/csv" || req.path === "/profiles/upload/csv/validate") && req.method === "POST") {
     return upload.single("file")(req, res, next);
   }
   next();
@@ -68,5 +79,10 @@ app.use("/api", apiVersionMiddleware, profileRoutes);
 // CSRF protection for web routes (when implemented)
 app.use("/web", csrfTokenMiddleware);
 app.use("/web", validateCsrfToken);
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
 
 export default app;

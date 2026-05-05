@@ -1,3 +1,5 @@
+import fs from "fs";
+import readline from "readline";
 import { uuidv7 } from "uuidv7";
 import {
   findByName,
@@ -11,6 +13,8 @@ import { fetchExternalData } from "../services/externalApiService.js";
 import { getAgeGroup, pickBestCountry } from "../utils/helpers.js";
 import { parseQuery } from "../utils/queryParser.js";
 import { exportProfilesAsCSV } from "../services/exportService.js";
+import { processCSVStream, validateCSVHeaders, readCSVHeadersFromFile } from "../services/csvIngestionService.js";
+import { invalidateQueryCache } from "../services/cacheService.js";
 
 
 // GET ALL PROFILES 
@@ -282,6 +286,57 @@ export async function exportProfiles(req, res) {
 }
 
 /**
+ * READ CSV HEADERS
+ * Reads first line of CSV to validate headers
+ */
+export async function readCSVHeaders(req, res) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        status: "error",
+        message: "CSV file is required",
+      });
+    }
+
+    const headers = await readCSVHeadersFromFile(req.file.path);
+    const validation = validateCSVHeaders(headers);
+
+    // Clean up temp file
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.error("Error deleting temp file:", err);
+    });
+
+    if (!validation.isValid) {
+      return res.status(400).json({
+        status: "error",
+        message: validation.error,
+        headers: headers,
+        valid: false,
+      });
+    }
+
+    return res.json({
+      status: "success",
+      headers: headers,
+      valid: true,
+    });
+
+  } catch (err) {
+    // Clean up file on error
+    if (req.file && req.file.path) {
+      fs.unlink(req.file.path, (unlinkErr) => {
+        if (unlinkErr) console.error("Error deleting temp file on error:", unlinkErr);
+      });
+    }
+
+    return res.status(400).json({
+      status: "error",
+      message: err.message,
+    });
+  }
+}
+
+/**
  * UPLOAD PROFILES FROM CSV
  * Streams CSV file, validates rows, batch inserts to database
  * Non-blocking, handles up to 500k rows
@@ -304,11 +359,16 @@ export async function uploadProfilesCSV(req, res) {
       });
     }
 
-    // Create readable stream from buffer
-    const fileStream = Readable.from([req.file.buffer]);
+    // Create readable stream from file path
+    const fileStream = fs.createReadStream(req.file.path);
 
     // Process CSV stream (handles validation, batching, and insertion)
     const stats = await processCSVStream(fileStream);
+
+    // Clean up uploaded file
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.error("Error deleting temp file:", err);
+    });
 
     // Invalidate query cache after bulk insert
     invalidateQueryCache();
@@ -323,6 +383,13 @@ export async function uploadProfilesCSV(req, res) {
 
   } catch (err) {
     console.error("CSV UPLOAD ERROR:", err);
+
+    // Clean up file on error
+    if (req.file && req.file.path) {
+      fs.unlink(req.file.path, (unlinkErr) => {
+        if (unlinkErr) console.error("Error deleting temp file on error:", unlinkErr);
+      });
+    }
 
     return res.status(500).json({
       status: "error",

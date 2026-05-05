@@ -1,5 +1,50 @@
 import NodeCache from "node-cache";
 
+const STOPWORDS = new Set([
+  "and",
+  "or",
+  "the",
+  "a",
+  "an",
+  "in",
+  "on",
+  "at",
+  "of",
+  "for",
+  "to",
+  "with",
+  "by",
+  "from",
+  "living",
+  "between",
+  "above",
+  "below",
+  "under",
+  "age",
+  "ages",
+  "aged",
+  "years",
+  "year",
+  "old",
+]);
+
+function normalizeRawSearch(raw) {
+  if (!raw) return undefined;
+
+  const tokens = String(raw)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0 && !STOPWORDS.has(token));
+
+  if (tokens.length === 0) {
+    return undefined;
+  }
+
+  return [...new Set(tokens)].sort().join(" ");
+}
+
 // In-memory cache with 5-minute TTL (300 seconds)
 const cache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
 
@@ -51,10 +96,9 @@ export function normalizeFilters(filters) {
   // Normalize country_id (handle both single and array)
   if (filters.country_id) {
     if (Array.isArray(filters.country_id)) {
-      // Sort array for consistent ordering
       normalized.country_id = filters.country_id
-        .map(c => String(c).toUpperCase().trim())
-        .filter(c => c.length > 0)
+        .map((c) => String(c).toUpperCase().trim())
+        .filter((c) => c.length > 0)
         .sort();
     } else {
       const countryId = String(filters.country_id).toUpperCase().trim();
@@ -76,6 +120,14 @@ export function normalizeFilters(filters) {
     const minProb = parseFloat(filters.min_country_probability);
     if (!isNaN(minProb) && minProb >= 0 && minProb <= 1) {
       normalized.min_country_probability = Math.round(minProb * 1000) / 1000;
+    }
+  }
+
+  // Normalize raw search string (for name search)
+  if (filters.raw) {
+    const rawValue = normalizeRawSearch(filters.raw);
+    if (rawValue) {
+      normalized.raw = rawValue;
     }
   }
 
@@ -111,14 +163,6 @@ export function normalizeFilters(filters) {
   if (isNaN(limit) || limit < 1) limit = 10;
   if (limit > 50) limit = 50; // max limit
   normalized.limit = limit;
-
-  // Normalize raw search string (for name search)
-  if (filters.raw) {
-    const raw = String(filters.raw).toLowerCase().trim();
-    if (raw.length > 0) {
-      normalized.raw = raw;
-    }
-  }
 
   return normalized;
 }

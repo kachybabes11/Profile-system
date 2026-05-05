@@ -47,7 +47,7 @@ export function getGitHubAuthorizationUrl(callbackUrl = "/auth/github/callback")
 export function getGitHubAuthorizationUrlWithPKCE(codeVerifier, callbackPort = 3001) {
   const codeChallenge = generateCodeChallenge(codeVerifier);
   const scopes = ["read:user", "user:email"];
-  const redirectUri = `http://localhost:${callbackPort}/callback`;
+  const redirectUri = GITHUB_REDIRECT_URL;
 
   const state = Buffer.from(JSON.stringify({ codeChallenge })).toString("base64");
 

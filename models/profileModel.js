@@ -47,7 +47,7 @@ export async function getAll(filters) {
   }
 
   const values = [];
-  let query = `SELECT ${PROFILE_COLUMNS.join(", ")} FROM profiles WHERE 1=1`;
+  let query = `SELECT ${PROFILE_COLUMNS.join(", ")}, COUNT(*) OVER() AS total_count FROM profiles WHERE 1=1`;
 
   // NAME SEARCH
   if (raw) {
@@ -93,7 +93,6 @@ export async function getAll(filters) {
     query += ` AND country_probability >= $${values.length}`;
   }
 
-  // sorting validation
   const allowedSort = ["age", "created_at", "gender_probability"];
   const allowedOrder = ["asc", "desc"];
 
@@ -103,7 +102,6 @@ export async function getAll(filters) {
 
   query += ` ORDER BY ${sort_by} ${order}`;
 
-  // pagination
   const offset = (page - 1) * limit;
   values.push(limit);
   query += ` LIMIT $${values.length}`;
@@ -112,60 +110,11 @@ export async function getAll(filters) {
   query += ` OFFSET $${values.length}`;
 
   const data = await pool.query(query, values);
-
-  // Get total count (with same filters, not all records)
-  let countQuery = "SELECT COUNT(*) FROM profiles WHERE 1=1";
-  const countValues = [];
-  let countParamIndex = 0;
-
-  if (raw) {
-    countValues.push(`%${raw}%`);
-    countQuery += ` AND name ILIKE $${++countParamIndex}`;
-  }
-
-  if (gender) {
-    countValues.push(gender);
-    countQuery += ` AND gender = $${++countParamIndex}`;
-  }
-
-  if (age_group) {
-    countValues.push(age_group);
-    countQuery += ` AND age_group = $${++countParamIndex}`;
-  }
-
-  if (Array.isArray(country_id)) {
-    countValues.push(country_id);
-    countQuery += ` AND country_id = ANY($${++countParamIndex})`;
-  } else if (country_id) {
-    countValues.push(country_id);
-    countQuery += ` AND country_id = $${++countParamIndex}`;
-  }
-
-  if (min_age) {
-    countValues.push(min_age);
-    countQuery += ` AND age >= $${++countParamIndex}`;
-  }
-
-  if (max_age) {
-    countValues.push(max_age);
-    countQuery += ` AND age <= $${++countParamIndex}`;
-  }
-
-  if (min_gender_probability) {
-    countValues.push(min_gender_probability);
-    countQuery += ` AND gender_probability >= $${++countParamIndex}`;
-  }
-
-  if (min_country_probability) {
-    countValues.push(min_country_probability);
-    countQuery += ` AND country_probability >= $${++countParamIndex}`;
-  }
-
-  const totalRes = await pool.query(countQuery, countValues);
+  const total = data.rows.length > 0 ? parseInt(data.rows[0].total_count, 10) : 0;
 
   const result = {
-    data: data.rows,
-    total: parseInt(totalRes.rows[0].count),
+    data: data.rows.map(({ total_count, ...row }) => row),
+    total,
     page,
     limit,
   };

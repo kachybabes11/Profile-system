@@ -1,3 +1,4 @@
+import fs from "fs";
 import { Readable } from "stream";
 import csv from "csv-parser";
 import pool from "../config/db.js";
@@ -43,24 +44,20 @@ const VALID_COUNTRIES = {
  * Validate a single row
  * Returns { isValid, error, reason }
  */
-function validateRow(row, existingNames) {
-  // Check required fields
+function validateRow(row, existingNames, existingDbNames) {
   if (!row.name || typeof row.name !== "string") {
     return { isValid: false, reason: "missing_fields" };
   }
 
   const name = row.name.trim().toLowerCase();
-
   if (name.length === 0) {
     return { isValid: false, reason: "missing_fields" };
   }
 
-  // Check for duplicates within batch
-  if (existingNames.has(name)) {
+  if (existingNames.has(name) || existingDbNames.has(name)) {
     return { isValid: false, reason: "duplicate_name" };
   }
 
-  // Validate age if provided
   if (row.age !== undefined && row.age !== "") {
     const age = parseInt(row.age, 10);
     if (isNaN(age) || age < 0 || age > 150) {
@@ -68,7 +65,6 @@ function validateRow(row, existingNames) {
     }
   }
 
-  // Validate gender if provided
   if (row.gender !== undefined && row.gender !== "") {
     const gender = String(row.gender).toLowerCase().trim();
     if (!VALID_GENDERS.includes(gender)) {
@@ -76,7 +72,6 @@ function validateRow(row, existingNames) {
     }
   }
 
-  // Validate country_id if provided
   if (row.country_id !== undefined && row.country_id !== "") {
     const countryId = String(row.country_id).toUpperCase().trim();
     if (!VALID_COUNTRIES[countryId]) {
@@ -84,7 +79,6 @@ function validateRow(row, existingNames) {
     }
   }
 
-  // Validate probabilities if provided
   if (row.gender_probability !== undefined && row.gender_probability !== "") {
     const prob = parseFloat(row.gender_probability);
     if (isNaN(prob) || prob < 0 || prob > 1) {
@@ -102,6 +96,19 @@ function validateRow(row, existingNames) {
   return { isValid: true };
 }
 
+async function getExistingNames(rowNames) {
+  if (rowNames.size === 0) {
+    return new Set();
+  }
+
+  const result = await pool.query(
+    "SELECT name FROM profiles WHERE name = ANY($1)",
+    [Array.from(rowNames)]
+  );
+
+  return new Set(result.rows.map((row) => row.name));
+}
+
 /**
  * Process a batch of rows
  * Returns { success, failed }
@@ -110,12 +117,19 @@ async function processBatch(rows, allExistingNames, stats) {
   const values = [];
   let rowCount = 0;
   const batchNames = new Set();
+  const rowNames = new Set();
 
-  // Build multi-insert query
+  for (const row of rows) {
+    if (row.name && typeof row.name === "string") {
+      rowNames.add(row.name.trim().toLowerCase());
+    }
+  }
+
+  const existingDbNames = await getExistingNames(rowNames);
   const placeholders = [];
 
   for (const row of rows) {
-    const validation = validateRow(row, new Set([...allExistingNames, ...batchNames]));
+    const validation = validateRow(row, new Set([...allExistingNames, ...batchNames]), existingDbNames);
 
     if (!validation.isValid) {
       stats.skipped++;
@@ -130,14 +144,13 @@ async function processBatch(rows, allExistingNames, stats) {
     const id = uuidv7();
     const gender = row.gender ? String(row.gender).toLowerCase() : null;
     const age = row.age ? parseInt(row.age, 10) : null;
-    const ageGroup = age ? getAgeGroup(age) : null;
+    const ageGroup = age !== null ? getAgeGroup(age) : null;
     const countryId = row.country_id ? String(row.country_id).toUpperCase() : null;
     const countryName = countryId ? VALID_COUNTRIES[countryId] : null;
     const genderProb = row.gender_probability ? parseFloat(row.gender_probability) : null;
     const countryProb = row.country_probability ? parseFloat(row.country_probability) : null;
     const createdAt = new Date().toISOString();
 
-    // Add 10 values for this row
     const paramIndex = rowCount * 10;
     placeholders.push(
       `($${paramIndex + 1},$${paramIndex + 2},$${paramIndex + 3},$${paramIndex + 4},$${paramIndex + 5},$${paramIndex + 6},$${paramIndex + 7},$${paramIndex + 8},$${paramIndex + 9},$${paramIndex + 10})`
@@ -239,6 +252,24 @@ export async function processCSVStream(fileStream) {
       .on("error", (err) => {
         reject(err);
       });
+  });
+}
+
+/**
+ * Read CSV headers from file path
+ * Returns array of header names
+ */
+export async function readCSVHeadersFromFile(filePath) {
+  return new Promise((resolve, reject) => {
+    const headers = [];
+    const stream = fs.createReadStream(filePath)
+      .pipe(csv())
+      .on('headers', (headerList) => {
+        headers.push(...headerList);
+        stream.destroy(); // Stop reading after headers
+        resolve(headers);
+      })
+      .on('error', reject);
   });
 }
 
