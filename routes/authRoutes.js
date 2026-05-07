@@ -134,18 +134,15 @@ router.get("/github/callback", async (req, res) => {
     }
 
     logAuth("Web login success", user.username);
-    res.cookie("accessToken", accessToken, {
-      ...webCookieOptions,
-      maxAge: 3 * 60 * 1000,
-    });
-
-    res.cookie("refreshToken", refreshToken, {
-      ...webCookieOptions,
-      maxAge: 5 * 60 * 1000,
-    });
 
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:4000";
-    return res.redirect(`${frontendUrl}/dashboard`);
+
+    const redirectUrl =
+      `${frontendUrl}/auth/callback` +
+      `?access_token=${encodeURIComponent(accessToken)}` +
+      `&refresh_token=${encodeURIComponent(refreshToken)}`;
+
+return res.redirect(redirectUrl);
   } catch (err) {
     logSecurity("OAuth callback error", { error: err.message });
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:4000";

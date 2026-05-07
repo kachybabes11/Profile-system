@@ -16,6 +16,7 @@ import cors from "cors";
 import multer from "multer";
 
 const app = express();
+app.set("trust proxy", 1);
 const isProduction = process.env.NODE_ENV === "production";
 
 const uploadDir = path.join(os.tmpdir(), "insighta-uploads");
@@ -41,11 +42,9 @@ const upload = multer({
   },
 });
 
-// CORS must be before other middleware
 const allowedOrigins = [
-  "https://profile-system-production.up.railway.app", // Backend itself
-  "http://localhost:3000", // Local development
-  "http://localhost:4000"  // Local frontend
+  process.env.FRONTEND_URL,
+  "http://localhost:4000"
 ];
 
 app.use(cors({
