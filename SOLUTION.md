@@ -83,8 +83,8 @@ SELECT *, COUNT(*) OVER() as total FROM profiles WHERE ... LIMIT 10 OFFSET 0;
 Different user queries producing identical results but different cache keys:
 
 **Examples**:
-- "Nigerian females between 20–45" → Cache key A
-- "Women aged 20–45 in Nigeria" → Cache key B
+- "Females from Nigeria between 20 and 45" → Cache key A
+- "Women aged between 20 and 45 in Nigeria" → Cache key B
 - Both produce: `{gender: "female", country_id: "NG", min_age: 20, max_age: 45}`
 
 ### Implementation
@@ -351,4 +351,3 @@ The implemented optimizations provide:
 - **Maintained backward compatibility**
 - **Production-ready reliability**
 
-All changes follow the principle of "do no harm" to existing functionality while significantly improving performance and scalability.
