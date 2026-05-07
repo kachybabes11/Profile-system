@@ -30,19 +30,8 @@ router.use(authRateLimiter);
  */
 router.get("/github", (req, res) => {
   try {
-    const {
-      url,
-      state,
-      codeVerifier,
-      codeChallenge,
-    } = oauthService.getGitHubAuthorizationUrlWithPKCE();
-
-    // Store OAuth state centrally
-    oauthService.storeOAuthState(state, {
-      type: "web",
-      codeVerifier,
-      createdAt: Date.now(),
-    });
+    const { url } =
+      oauthService.getGitHubAuthorizationUrlWithPKCE();
 
     return res.redirect(url);
   } catch (err) {
