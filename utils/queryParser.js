@@ -1,47 +1,21 @@
 const STOPWORDS = new Set([
-  "and",
-  "or",
-  "the",
-  "a",
-  "an",
-  "in",
-  "on",
-  "at",
-  "of",
-  "for",
-  "to",
-  "with",
-  "by",
-  "from",
-  "living",
-  "between",
-  "above",
-  "below",
-  "under",
-  "age",
-  "ages",
-  "aged",
-  "years",
-  "year",
-  "old",
+  "and","or","the","a","an","in","on","at","of","for","to","with","by","from",
+  "living","between","above","below","under","age","ages","aged","years","year",
+  "old"
 ]);
 
 function canonicalizeRaw(rawQuery, usedTerms) {
   const tokens = rawQuery
     .replace(/[^a-z0-9]+/g, " ")
     .split(" ")
-    .map((token) => token.trim())
+    .map(t => t.trim())
+    .filter(t => t && !STOPWORDS.has(t) && !usedTerms.has(t));
 
-  if (tokens.length === 0) {
-    return undefined;
-  }
-
-  return [...new Set(tokens)].sort().join(" ");
+  return tokens.length ? [...new Set(tokens)].sort().join(" ") : undefined;
 }
 
 export function parseQuery(q) {
-
-  const rawQuery = String(q).toLowerCase();
+  const rawQuery = String(q || "").toLowerCase();
   const filters = {};
   const usedTerms = new Set();
 
@@ -50,17 +24,17 @@ export function parseQuery(q) {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, " ")
       .split(" ")
-      .filter((token) => token.length > 0)
-      .forEach((token) => usedTerms.add(token));
+      .filter(Boolean)
+      .forEach(t => usedTerms.add(t));
   };
 
   // GENDER
-  if (rawQuery.match(/(male|males|man|men|boy|boys|guy|guys)/)) {
+  if (/\b(male|males|man|men|boy|boys|guy|guys)\b/.test(rawQuery)) {
     filters.gender = "male";
     markTerms("male males man men boy boys guy guys");
   }
 
-  if (rawQuery.match(/(female|females|woman|women|girl|girls)/)) {
+  if (/\b(female|females|woman|women|girl|girls)\b/.test(rawQuery)) {
     filters.gender = "female";
     markTerms("female females woman women girl girls");
   }
@@ -89,33 +63,21 @@ export function parseQuery(q) {
     markTerms("senior");
   }
 
-  // NUMERIC AGE RULES
-  const between = rawQuery.match(/between (d+) and (d+)/);
+  // NUMERIC AGE RULES (FIXED)
+  const between = rawQuery.match(/between (\d+) and (\d+)/);
   if (between) {
-    filters.min_age = +between[1];
-    filters.max_age = +between[2];
-    markTerms(between[0]);
+    filters.min_age = Number(between[1]);
+    filters.max_age = Number(between[2]);
   }
 
-  const above = rawQuery.match(/above (d+)/);
-  if (above) {
-    filters.min_age = +above[1];
-    markTerms(above[0]);
-  }
+  const above = rawQuery.match(/above (\d+)/);
+  if (above) filters.min_age = Number(above[1]);
 
-  const below = rawQuery.match(/below (d+)/);
-  if (below) {
-    filters.max_age = +below[1];
-    markTerms(below[0]);
-  }
+  const below = rawQuery.match(/below (\d+)/);
+  if (below) filters.max_age = Number(below[1]);
 
-  const under = rawQuery.match(/under (d+)/);
-  if (under) {
-    filters.max_age = +under[1];
-    markTerms(under[0]);
-  }
-
-  markTerms("age ages aged years year old");
+  const under = rawQuery.match(/under (\d+)/);
+  if (under) filters.max_age = Number(under[1]);
 
   // COUNTRY
   const countries = {
@@ -131,37 +93,30 @@ export function parseQuery(q) {
     america: "US",
   };
 
-  let foundCountry = false;
-
   for (const key of Object.keys(countries)) {
     if (rawQuery.includes(key)) {
       filters.country_id = countries[key];
       markTerms(key);
-      foundCountry = true;
       break;
     }
   }
 
-  // CONTINENT fallback
-    const continentMap = {
-      africa: ["NG", "KE", "GH", "EG", "ZA", "UG", "TZ"],
-      europe: ["GB", "FR", "DE", "IT", "ES"],
-      asia: ["CN", "IN", "JP", "PK"],
-      america: ["US", "CA", "BR", "MX"],
-    };
+  const continentMap = {
+    africa: ["NG","KE","GH","EG","ZA","UG","TZ"],
+    europe: ["GB","FR","DE","IT","ES"],
+    asia: ["CN","IN","JP","PK"],
+    america: ["US","CA","BR","MX"],
+  };
 
-    for (const continent of Object.keys(continentMap)) {
-      if (rawQuery.includes(continent)) {
-        filters.country_id = continentMap[continent];
-        markTerms(continent);
-        break;
-      }
+  for (const continent of Object.keys(continentMap)) {
+    if (rawQuery.includes(continent)) {
+      filters.country_id = continentMap[continent];
+      markTerms(continent);
+      break;
     }
+  }
 
   const raw = canonicalizeRaw(rawQuery, usedTerms);
 
-  return {
-    filters,
-    raw,
-  };
+  return { filters, raw };
 }
