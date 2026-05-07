@@ -12,8 +12,12 @@ import {
 import { requireRole } from "../middleware/requireRole.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { apiVersionMiddleware } from "../middleware/apiVersion.js";
+import { apiRateLimiter } from "../middleware/rateLimiter.js";
 
 const router = express.Router();
+
+// Apply API rate limiter to all profile routes
+router.use(apiRateLimiter);
 
 router.post("/profiles", apiVersionMiddleware, authMiddleware, requireRole('admin'), createProfile);
 router.get("/profiles", apiVersionMiddleware, authMiddleware, requireRole('admin', 'analyst'), getProfiles);

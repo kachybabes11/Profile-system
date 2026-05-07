@@ -8,6 +8,8 @@ import {
   hashToken,
 } from "../services/tokenService.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
+import { authRateLimiter } from "../middleware/rateLimiter.js";
+import { logAuth, logSecurity } from "../services/loggerService.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 const webCookieOptions = {
@@ -19,36 +21,58 @@ const webCookieOptions = {
 
 const router = express.Router();
 
+// Apply auth rate limiter to all auth routes
+router.use(authRateLimiter);
+
 /**
  * GET /auth/github
- * Redirect to GitHub OAuth (for web)
+ * Redirect to GitHub OAuth (for web) with PKCE
  */
 router.get("/github", (req, res) => {
-  const { url } = oauthService.getGitHubAuthorizationUrl();
-  res.redirect(url);
+  try {
+    const {
+      url,
+      state,
+      codeVerifier,
+      codeChallenge,
+    } = oauthService.getGitHubAuthorizationUrlWithPKCE();
+
+    // Store OAuth state centrally
+    oauthService.storeOAuthState(state, {
+      type: "web",
+      codeVerifier,
+      createdAt: Date.now(),
+    });
+
+    return res.redirect(url);
+  } catch (err) {
+    logSecurity("Failed to initiate web OAuth", {
+      error: err.message,
+    });
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to initialize OAuth",
+    });
+  }
 });
+
 
 /**
  * GET /auth/github/callback
- * Handle GitHub OAuth callback (for web)]
+ * Handle GitHub OAuth callback (for both web and CLI)
  */
 router.get("/github/callback", async (req, res) => {
   try {
     const { code, error, error_description, state } = req.query;
-    const stateEntry = oauthService.peekOAuthState(state);
-    const isCliFlow = stateEntry?.type === "cli";
-
-    console.log("\n[OAuth Callback]", {
-      code: code ? `${code.substring(0, 10)}...` : null,
-      error,
-      error_description,
-      state: state ? `${state.substring(0, 10)}...` : null,
-      flow: stateEntry?.type || "unknown",
-    });
 
     if (error) {
       const errorMessage = error_description || error;
-      console.error(`[OAuth Error] GitHub rejected authorization: ${errorMessage}`);
+      logSecurity("GitHub OAuth error", { error: errorMessage, state });
+
+      // Check if CLI flow
+      const stateEntry = state ? oauthService.peekOAuthState(state) : null;
+      const isCliFlow = stateEntry?.type === "cli";
 
       if (isCliFlow) {
         return res.status(400).json({
@@ -66,30 +90,35 @@ router.get("/github/callback", async (req, res) => {
     }
 
     if (!code || !state) {
-      console.error("[OAuth Error] Missing code or state in callback");
-
-      if (isCliFlow) {
-        return res.status(400).json({
-          status: "error",
-          message: "Missing authorization code or state",
-        });
-      }
-
+      logSecurity("Missing code or state in OAuth callback", { code: !!code, state: !!state });
       return res.status(400).json({
         status: "error",
         message: "Missing authorization code or state",
       });
     }
 
+    // Get code verifier from state
+    const stateEntry = oauthService.peekOAuthState(state);
+    if (!stateEntry) {
+      logSecurity("Invalid OAuth state", { state });
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid OAuth state",
+      });
+    }
+
+    const isCliFlow = stateEntry.type === "cli";
+    const codeVerifier = stateEntry.codeVerifier;
+
     const { user, accessToken, refreshToken } = await oauthService.completeOAuthFlow(
       code,
       "/auth/github/callback",
-      undefined,
+      codeVerifier,
       state
     );
 
     if (isCliFlow) {
-      console.log(`[CLI OAuth Success] User ${user.username} authenticated`);
+      logAuth("CLI login success", user.username);
       return res.json({
         status: "success",
         user: {
@@ -104,7 +133,7 @@ router.get("/github/callback", async (req, res) => {
       });
     }
 
-    console.log(`[WEB OAuth Success] User ${user.username} authenticated`);
+    logAuth("Web login success", user.username);
     res.cookie("accessToken", accessToken, {
       ...webCookieOptions,
       maxAge: 3 * 60 * 1000,
@@ -118,7 +147,7 @@ router.get("/github/callback", async (req, res) => {
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:4000";
     return res.redirect(`${frontendUrl}/dashboard`);
   } catch (err) {
-    console.error("[WEB OAuth Error] Authentication flow failed:", err.message);
+    logSecurity("OAuth callback error", { error: err.message });
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:4000";
     res.redirect(
       `${frontendUrl}/?error=${encodeURIComponent(
@@ -143,7 +172,7 @@ router.post("/cli/login", (req, res) => {
       });
     }
 
-    const { url, state } = oauthService.getGitHubAuthorizationUrlWithPKCE(codeVerifier);
+    const { url, state } = oauthService.getGitHubAuthorizationUrlForCLI(codeVerifier);
 
     return res.json({
       status: "success",
@@ -152,6 +181,7 @@ router.post("/cli/login", (req, res) => {
     });
 
   } catch (err) {
+    logSecurity("Failed to initiate CLI OAuth", { error: err.message });
     return res.status(500).json({
       status: "error",
       message: "Failed to initiate login",
@@ -170,6 +200,7 @@ router.post("/refresh", async (req, res) => {
     const refreshToken = req.body.refresh_token || req.cookies?.refreshToken;
 
     if (!refreshToken) {
+      logSecurity("Refresh attempt without token", { ip: req.ip });
       return res.status(401).json({
         status: "error",
         message: "Missing refresh token",
@@ -179,6 +210,7 @@ router.post("/refresh", async (req, res) => {
     // Verify refresh token
     const decoded = verifyToken(refreshToken);
     if (!decoded || decoded.type !== "refresh") {
+      logSecurity("Invalid refresh token", { ip: req.ip });
       return res.status(401).json({
         status: "error",
         message: "Invalid or expired refresh token",
@@ -189,6 +221,7 @@ router.post("/refresh", async (req, res) => {
     const tokenHash = hashToken(refreshToken);
     const storedToken = await userModel.verifyRefreshToken(tokenHash);
     if (!storedToken) {
+      logSecurity("Revoked refresh token used", { userId: decoded.userId, ip: req.ip });
       return res.status(401).json({
         status: "error",
         message: "Refresh token has been revoked",
@@ -198,6 +231,7 @@ router.post("/refresh", async (req, res) => {
     // Fetch fresh user data
     const user = await userModel.findById(decoded.userId);
     if (!user || !user.is_active) {
+      logSecurity("Inactive user refresh attempt", { userId: decoded.userId, username: user?.username });
       return res.status(403).json({
         status: "error",
         message: "User is not active",
@@ -215,6 +249,8 @@ router.post("/refresh", async (req, res) => {
     const newTokenHash = hashToken(newRefreshToken);
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
     await userModel.storeRefreshToken(user.id, newTokenHash, expiresAt);
+
+    logAuth("Token refresh", user.username);
 
     // Set cookies for web
     res.cookie("accessToken", newAccessToken, {
@@ -234,7 +270,7 @@ router.post("/refresh", async (req, res) => {
       expires_in: 180,
     });
   } catch (err) {
-    console.error("Token refresh error:", err);
+    logError("Token refresh error", err);
     res.status(500).json({
       status: "error",
       message: "Failed to refresh token",
@@ -253,6 +289,8 @@ router.post("/logout", authMiddleware, async (req, res) => {
     // Revoke all user's refresh tokens
     await userModel.revokeAllUserTokens(userId);
 
+    logAuth("Logout", req.user.username);
+
     // Clear cookies
     res.clearCookie("accessToken", {
       ...webCookieOptions,
@@ -268,6 +306,7 @@ router.post("/logout", authMiddleware, async (req, res) => {
       message: "Logged out successfully",
     });
   } catch (err) {
+    logError("Logout error", err);
     res.status(500).json({
       status: "error",
       message: "Failed to logout",
@@ -276,7 +315,7 @@ router.post("/logout", authMiddleware, async (req, res) => {
 });
 
 /**
- * GET /me
+ * GET /auth/me
  * Get current user info
  */
 router.get("/me", authMiddleware, async (req, res) => {
@@ -301,6 +340,7 @@ router.get("/me", authMiddleware, async (req, res) => {
       },
     });
   } catch (err) {
+    logError("Get user info error", err);
     res.status(500).json({
       status: "error",
       message: "Failed to fetch user info",

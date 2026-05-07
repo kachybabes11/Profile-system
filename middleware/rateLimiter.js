@@ -1,4 +1,5 @@
 import rateLimit from "express-rate-limit";
+import { logSecurity } from "../services/loggerService.js";
 
 /**
  * Rate Limiter for Auth Endpoints
@@ -15,7 +16,13 @@ export const authRateLimiter = rateLimit({
     message: "Too many authentication attempts. Please try again later.",
   },
   standardHeaders: false,
-  skip: (req) => req.method === "GET", // Don't rate limit GET requests
+  onLimitReached: (req) => {
+    logSecurity("Rate limit exceeded on auth endpoint", {
+      ip: req.ip,
+      endpoint: req.url,
+      method: req.method,
+    });
+  },
 });
 
 /**
@@ -35,6 +42,14 @@ export const apiRateLimiter = rateLimit({
   },
   standardHeaders: false,
   skip: (req) => req.method === "GET", // Less restrictive on reads
+  onLimitReached: (req) => {
+    logSecurity("Rate limit exceeded on API endpoint", {
+      ip: req.ip,
+      user: req.user?.username || "anonymous",
+      endpoint: req.url,
+      method: req.method,
+    });
+  },
 });
 
 /**
@@ -46,5 +61,12 @@ export const rateLimiter = rateLimit({
   message: {
     status: "error",
     message: "Too many requests",
+  },
+  onLimitReached: (req) => {
+    logSecurity("Global rate limit exceeded", {
+      ip: req.ip,
+      endpoint: req.url,
+      method: req.method,
+    });
   },
 });

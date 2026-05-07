@@ -124,22 +124,20 @@ export function getGitHubAuthorizationUrl(callbackUrl = OAUTH_CALLBACK_PATH) {
 }
 
 /**
- * Get GitHub authorization URL for CLI with PKCE
+ * Get GitHub authorization URL for web with PKCE
  */
-export function getGitHubAuthorizationUrlWithPKCE(codeVerifier) {
-  if (!codeVerifier) {
-    throw new Error("codeVerifier is required for CLI PKCE flow");
-  }
-
-  const codeChallenge = generateCodeChallenge(codeVerifier);
+export function getGitHubAuthorizationUrlWithPKCE(codeVerifier = null) {
+  const codeVerifierUsed = codeVerifier || generateCodeVerifier();
+  const codeChallenge = generateCodeChallenge(codeVerifierUsed);
   const scopes = ["read:user", "user:email"];
-  const state = createOAuthState("cli", codeVerifier);
+  const state = createOAuthState("web", codeVerifierUsed);
   const redirectUri = resolveRedirectUri(OAUTH_CALLBACK_PATH);
 
   return {
     url: `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${redirectUri}&scope=${scopes.join(",")}&state=${encodeURIComponent(state)}&code_challenge=${codeChallenge}&code_challenge_method=S256`,
     codeChallenge,
     state,
+    codeVerifier: codeVerifierUsed,
   };
 }
 

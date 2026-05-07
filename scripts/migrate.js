@@ -18,7 +18,7 @@ const migrations = [
     sql: `
       CREATE TABLE IF NOT EXISTS users (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        github_id INTEGER UNIQUE NOT NULL,
+        github_id BIGINT UNIQUE NOT NULL,
         username VARCHAR(255) UNIQUE NOT NULL,
         email VARCHAR(255),
         avatar_url VARCHAR(500),
@@ -28,7 +28,7 @@ const migrations = [
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       );
-      
+
       CREATE INDEX IF NOT EXISTS idx_users_github_id ON users(github_id);
       CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
     `

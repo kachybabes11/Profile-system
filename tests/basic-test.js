@@ -7,7 +7,7 @@
 
 import axios from 'axios';
 
-const BASE_URL = process.env.BASE_URL || 'https://profile-system-production.up.railway.app';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 // Test results
 let testsRun = 0;
@@ -54,7 +54,8 @@ async function testCORSHeaders() {
     const response = await axios.options(`${BASE_URL}/api/profiles`, {
       headers: {
         'Origin': 'https://profile-system-production.up.railway.app',
-        'Access-Control-Request-Method': 'GET'
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'content-type'
       }
     });
 
